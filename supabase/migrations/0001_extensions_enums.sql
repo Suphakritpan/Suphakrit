@@ -44,7 +44,9 @@ create type service_request_type as enum
 create type service_request_status as enum ('open', 'acknowledged', 'done', 'cancelled');
 
 -- ── การชำระเงิน ─────────────────────────────────────────────────────────────
-create type payment_method as enum ('cash', 'transfer', 'card');
+-- แยก transfer (โอนแล้วส่งสลิปให้พนักงานตรวจ) ออกจาก qr_promptpay
+-- (สแกน QR ที่ระบบสร้างให้ ยอดถูกฝังใน QR อยู่แล้ว) เพราะเป็นคนละขั้นตอนหน้างาน
+create type payment_method as enum ('cash', 'transfer', 'card', 'qr_promptpay');
 create type payment_status as enum ('pending', 'succeeded', 'failed', 'cancelled', 'refunded');
 -- provider แยกจาก method เพื่อให้สลับไป gateway จริงได้โดยไม่ต้องแก้ข้อมูลเก่า
 create type payment_provider as enum ('mock_cash', 'mock_promptpay', 'mock_card');

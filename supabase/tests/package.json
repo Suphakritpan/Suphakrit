@@ -1,0 +1,11 @@
+{
+  "name": "shabu-mood-db-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node migrate.test.mjs && node rules.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0"
+  }
+}

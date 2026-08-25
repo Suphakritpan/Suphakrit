@@ -1,81 +1,170 @@
-# Shabu Mood — Database
+# Shabu Mood — ฐานข้อมูล
 
-## วิธีติดตั้ง
+Postgres บน Supabase · 28 ตาราง · 32 ฟังก์ชัน · 54 RLS policy
 
-เปิด Supabase Dashboard → **SQL Editor** → รันทีละไฟล์ **ตามลำดับ** (ห้ามสลับ เพราะไฟล์หลังอ้างอิงของที่ไฟล์ก่อนสร้างไว้)
+## ติดตั้ง
+
+### วิธีที่ 1 — ไฟล์เดียวจบ (แนะนำสำหรับติดตั้งครั้งแรก)
+
+Supabase Dashboard → **SQL Editor** → วางไฟล์ `APPLY_ALL.sql` ทั้งไฟล์ → Run
+
+> ⚠️ `APPLY_ALL.sql` ขึ้นต้นด้วย `drop schema public cascade`
+> มันจะ **ล้างทุกอย่างใน schema public ทิ้ง** แล้วสร้างใหม่จากศูนย์
+> ห้ามรันกับฐานข้อมูลที่มีข้อมูลจริง
+
+### วิธีที่ 2 — ทีละไฟล์
+
+รันตามลำดับ ห้ามสลับ เพราะไฟล์หลังอ้างอิงของที่ไฟล์ก่อนสร้างไว้
 
 | ลำดับ | ไฟล์ | เนื้อหา |
 |---|---|---|
-| 1 | `migrations/0001_schema.sql` | 15 ENUM + 22 ตาราง + Index |
-| 2 | `migrations/0002_functions.sql` | Function, Trigger, Realtime |
-| 3 | `migrations/0003_rls.sql` | RLS Policy ทุกตาราง |
-| 4 | `migrations/0004_rpc.sql` | RPC ของลูกค้าและพนักงาน + สิทธิ์ |
-| 5 | `migrations/0005_seed.sql` | สาขา แพ็กเกจ โต๊ะ เมนูตั้งต้น |
+| 1 | `migrations/0001_extensions_enums.sql` | extension + ENUM 17 ตัว |
+| 2 | `migrations/0002_core_config.sql` | สาขา, ตั้งค่าร้าน, พนักงาน, สถานีครัว, ตัวนับ, audit |
+| 3 | `migrations/0003_menu_packages.sql` | แพ็กเกจบุฟเฟต์, add-on, เมนู, การล็อกเมนูตามแพ็กเกจ |
+| 4 | `migrations/0004_floor_queue.sql` | โซน, โต๊ะ, คิวหน้าร้าน |
+| 5 | `migrations/0005_visits.sql` | ลูกค้า, visit, add-on ที่เลือก, อุปกรณ์ที่สแกน QR |
+| 6 | `migrations/0006_orders.sql` | ออเดอร์, รายการอาหาร, ประวัติสถานะ, เรียกพนักงาน |
+| 7 | `migrations/0007_billing_payments.sql` | โปรโมชั่น, บิล, การชำระเงิน, แต้มสะสม |
+| 8 | `migrations/0008_functions_rpc.sql` | helper, state machine, RPC ทั้งหมด |
+| 9 | `migrations/0009_rls_realtime.sql` | RLS policy, สิทธิ์, view, realtime |
+| 10 | `migrations/0010_token_fallback.sql` | ทางเข้าสำรองด้วย token ล้วน |
+| 11 | `seed.sql` | สาขา, 2 แพ็กเกจ, add-on, 10 หมวด, 64 เมนู, 3 โซน 12 โต๊ะ |
 
-จากนั้นสร้างบัญชี ADMIN คนแรกตามคำอธิบายท้ายไฟล์ `0005_seed.sql`
+### หลังรันเสร็จ ต้องทำอีก 2 อย่าง
+
+1. **Authentication → Providers → เปิด "Anonymous sign-ins"**
+   ลูกค้าที่สแกน QR ต้องใช้ ไม่งั้นจะไม่ได้ Realtime และ RLS จะกันหมด
+   (ถ้าเปิดไม่ได้ ให้ใช้ทางสำรองใน `0010_token_fallback.sql` แทน — แลกกับการไม่มี realtime)
+2. **สร้างบัญชีพนักงานคนแรก** แล้วรัน `seed_dev_staff.sql` เพื่อผูก role
+
+## ทดสอบ
+
+รัน migration ทั้งชุดกับ Postgres จริง (PGlite — Postgres แบบ WASM ไม่ต้องลง Docker)
+แล้วทดสอบกฎทางธุรกิจแบบ end-to-end
+
+```bash
+cd supabase/tests
+npm install
+npm test
+```
+
+`rules.test.mjs` ทดสอบ 28 เคส ครอบคลุม: การล็อกเมนูตามแพ็กเกจ, ทางเข้า QR และ rate limit,
+เพดานการสั่ง, กฎ last order, ความถูกต้องของยอดบิล, การกันจ่ายเกิน, การจ่ายแยก,
+ลำดับสถานะ paid → closed → cleaning → available และ audit log
 
 ## หลักการออกแบบที่ต้องรู้ก่อนแก้โค้ด
 
-**1. ราคาไม่ได้อยู่ที่ `order_items`**
+**1. เงินเป็นสตางค์ (integer) เสมอ**
 
-ร้านนี้เป็นบุฟเฟต์คิดต่อคน ยอดเงินมาจาก `visit_guests` (แพ็กเกจของแต่ละคน) บวก `visit_addons`
+ทุกคอลัมน์ลงท้าย `_satang` — `29900` คือ 299 บาท
+ห้ามใช้ทศนิยมลอยตัวกับเงิน เพราะ `0.1 + 0.2 !== 0.3`
+
+**2. ราคาไม่ได้อยู่ที่ `order_items`**
+
+ร้านนี้เป็นบุฟเฟต์คิดต่อคน ยอดเงินมาจาก `visits` (แพ็กเกจ × จำนวนคน) บวก `visit_addons`
 `order_items` ทำหน้าที่เดียวคือบอกว่า "ลูกค้าสั่งอะไรมา" ให้ครัวเห็น
 
 โต๊ะ 4 คน สั่งกุ้ง 10 จาน ก็ยังจ่ายเท่าเดิม
 
-**2. ทุกราคาเป็น snapshot**
+**3. หนึ่ง visit มีแพ็กเกจเดียว**
 
-`visit_guests.unit_price` และ `visit_addons.unit_price` คัดลอกค่ามาตอนเปิดโต๊ะ
-ร้านขึ้นราคา 299 → 319 พรุ่งนี้ บิลของเมื่อวานยังแสดง 299 เหมือนเดิม
+`visits.package_id` เป็น NOT NULL และ **ไม่มีตาราง `visit_guests`** โดยเจตนา
+ทั้งโต๊ะต้องใช้แพ็กเกจเดียวกัน ถ้าอนาคตต้องแยกรายคนค่อยเพิ่มตารางใหม่
 
-**3. ยอดเงินคำนวณในฐานข้อมูลเท่านั้น**
+**4. ไม่มีตัวเลขราคาฝังในโค้ด**
 
-`recalc_visit_totals()` เป็นตัวเขียน `visits.total_amount`
-Frontend ห้ามส่งยอดมาให้ระบบเชื่อ ไม่งั้นแก้ค่าใน DevTools แล้วจ่าย 1 บาทได้
+299 / 399 อยู่ใน `buffet_packages` · 39 อยู่ใน `add_ons` · VAT และเพดานการสั่งอยู่ใน `restaurant_settings`
+เจ้าของร้านแก้เองได้จากหน้าผู้จัดการโดยไม่ต้อง deploy
 
-**4. ลูกค้าเข้าถึงข้อมูลผ่าน RPC เท่านั้น**
+**5. ทุกราคาเป็น snapshot**
 
-ลูกค้าสแกน QR โดยไม่ล็อกอิน จึงไม่มี `auth.uid()` ให้ผูกสิทธิ์
-ตาราง `visits` / `orders` จึง **ไม่มี policy ให้ `anon` เลย** — ยิง REST ตรงไม่ได้
+`visits.package_price_adult_satang` และ `visit_addons.unit_price_satang` คัดลอกค่ามาตอนเปิดโต๊ะ
+ร้านขึ้นราคา 299 → 319 พรุ่งนี้ บิลของเมื่อวานยังคิดที่ 299 เหมือนเดิม
 
-ทางเข้าเดียวคือ 4 ฟังก์ชันนี้ ซึ่งรับ `access_token` จาก QR แล้วตรวจเอง
+**6. ยอดเงินคำนวณในฐานข้อมูลเท่านั้น**
+
+`recalculate_visit_totals()` เป็นตัวเขียน `visits.total_satang` และ `bill_lines`
+Frontend คำนวณได้แต่ใช้ "แสดงผล" เท่านั้น — ถ้าปล่อยให้ frontend ส่งยอดมาให้ระบบเชื่อ
+ลูกค้าแก้ค่าใน DevTools แล้วจ่าย 1 บาทได้
+
+**7. กฎทางธุรกิจบังคับที่ฐานข้อมูล ไม่ใช่ที่ UI**
+
+endpoint ฝั่งลูกค้าถูกยิงตรงได้เสมอ กฎที่อยู่แค่ในหน้าจอจึงข้ามได้ทั้งหมด
+`place_order()` จึงตรวจเองทั้งหมด: visit ยังเปิดอยู่ไหม, เลยเวลา last order หรือยัง,
+เมนูของหมดไหม, เมนูอยู่ในแพ็กเกจของโต๊ะนี้ไหม, เกินเพดานต่อเมนู/ต่อรอบไหม,
+สั่งถี่เกินไปไหม, มีออเดอร์ค้างเกินกำหนดไหม
+
+**8. สถานะเดินตามลำดับเท่านั้น**
 
 ```
-get_visit_by_token(token)              ดูว่าอยู่โต๊ะไหน ยอดเท่าไหร่
-get_visit_orders(token)                ติดตามสถานะอาหาร
-place_order(token, items, note)        ส่งออเดอร์
-call_staff(token, reason, note)        เรียกพนักงาน
+visit:  open → awaiting_payment → paid → closed
+โต๊ะ:   available → occupied → cleaning → available
 ```
 
-`place_order` บังคับว่า visit ต้อง `OPEN` เท่านั้น — ปิดบิลแล้ว QR เดิมสั่งอาหารไม่ได้
-และ client ส่ง `table_id` / `visit_id` มาเองไม่ได้ ต้องมี token ที่ถูกต้องเท่านั้น
+trigger จะ raise ถ้าข้ามขั้น — `paid` (จ่ายครบ ลูกค้าอาจยังนั่งอยู่) กับ `closed` (ปิดรอบ ลุกจากโต๊ะแล้ว)
+เป็นคนละสถานะโดยเจตนา
 
-## ตัวอย่างการใช้งานจาก Frontend
+## RPC
+
+### ลูกค้าเรียกได้
+
+| ฟังก์ชัน | หน้าที่ |
+|---|---|
+| `join_visit(session_token, table_qr_token, access_code, nickname, ua)` | ผูกเครื่องเข้ากับโต๊ะ (มี rate limit) |
+| `place_order(visit_id, items, note)` | ส่งออเดอร์ — ตรวจกฎครบทุกข้อ |
+| `request_visit_bill(visit_id)` | กดเช็คบิล ล็อกยอด |
+
+### พนักงานเท่านั้น
+
+| ฟังก์ชัน | หน้าที่ |
+|---|---|
+| `open_visit(table, package, adults, children, addons, queue?, phone?)` | เปิดโต๊ะ + snapshot ราคา + ออก QR |
+| `advance_order_item(item_id, next)` | เดินสถานะรายจาน |
+| `create_payment` / `confirm_payment` / `cancel_payment` | ชำระเงิน — กันจ่ายเกินด้วย `FOR UPDATE` |
+| `close_visit(visit_id)` | paid → closed, โต๊ะไป cleaning, ล้าง QR, ให้แต้ม |
+| `mark_table_clean(table_id)` | cleaning → available |
+| `set_menu_item_availability(id, bool)` | ปุ่ม "ของหมด" (แก้ได้เฉพาะคอลัมน์นี้) |
+| `void_visit(visit_id, reason)` | ยกเลิกบิล — ผู้จัดการเท่านั้น ต้องมีเหตุผล |
+
+## ตัวอย่างการใช้จาก Frontend
 
 ```js
 import { supabase } from '@/api/supabaseClient'
 
-// ลูกค้าสแกน QR มาที่ /order/:token
-const { data, error } = await supabase.rpc('get_visit_by_token', { p_token: token })
+// ลูกค้าสแกน QR จากสลิป → /v/:token
+await supabase.auth.signInAnonymously()
+const { data: visit } = await supabase.rpc('join_visit', {
+  p_session_token: token,
+  p_nickname: 'มือถือโต๊ะ A1',
+})
 
 // ส่งออเดอร์
 await supabase.rpc('place_order', {
-  p_token: token,
+  p_visit_id: visit.id,
   p_items: [{ menu_item_id: id, quantity: 2, note: 'ไม่ใส่ผักชี' }],
 })
 
 // พนักงานเปิดโต๊ะ (ต้องล็อกอินก่อน)
-await supabase.rpc('open_visit', {
+const { data: v } = await supabase.rpc('open_visit', {
   p_table_id: tableId,
-  p_guests: [{ buffet_package_id: standardId, count: 3 },
-             { buffet_package_id: premiumId,  count: 1 }],
-  p_addons: [{ addon_id: refillId, quantity: 4 }],
+  p_package_id: standardId,
+  p_adult_count: 3,
+  p_child_count: 0,
+  p_addons: [{ add_on_id: refillId, quantity: 3 }],
 })
-// → คืน access_token เอาไปสร้าง QR
+// → v.session_token เอาไปสร้าง QR, v.access_code พิมพ์บนสลิป
 ```
 
 ## ตารางที่เปิด Realtime
 
-`orders`, `order_items`, `staff_calls`, `dining_tables`, `queue_tickets`, `visits`
+`visits` · `orders` · `order_items` · `service_requests` · `tables` · `queue_tickets` · `payments`
 
-ลูกค้าเห็นสถานะอาหารเปลี่ยนทันที ครัวเห็นออเดอร์ใหม่ทันที
+> ⚠️ Realtime ส่ง event DELETE โดยไม่กรองด้วย RLS (payload มีแค่ primary key)
+> ตารางกลุ่มนี้จึงต้องใช้การเปลี่ยน status แทนการลบแถวเสมอ
+
+## โฟลเดอร์ `_archive_alt_design/`
+
+ดีไซน์อีกชุดที่เคยเขียนคู่ขนานกัน (22 ตาราง, `dining_tables`/`staff`/`addons`, เงินเป็น numeric,
+ลูกค้าเข้าผ่าน token ล้วนโดยไม่ล็อกอิน) เก็บไว้อ้างอิงเท่านั้น **ไม่ได้ถูกใช้แล้ว**
+แนวคิดที่ดีจากชุดนั้นถูกยกมาใส่ชุดนี้แล้ว: `order_status_history`, `qr_promptpay` เป็น
+payment method แยก, เลขใบเสร็จรันรายวัน และ RPC แบบ token ล้วนใน `0010_token_fallback.sql`

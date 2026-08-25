@@ -80,6 +80,9 @@ create table payments (
   change_satang     integer not null default 0 check (change_satang >= 0),
 
   status            payment_status not null default 'pending',
+  -- เลขใบเสร็จรันรายวัน ออกตอนชำระสำเร็จ — จ่ายแยกกันคนละใบก็ได้เลขคนละใบ
+  receipt_number    integer,
+  receipt_date      date,
   provider_ref      text,                       -- transaction id จาก gateway
   provider_payload  jsonb,                      -- payload ดิบไว้ตรวจสอบย้อนหลัง
   failure_reason    text,

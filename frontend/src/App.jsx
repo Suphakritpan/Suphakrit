@@ -1,42 +1,60 @@
-import { useSupabaseStatus } from '@/hooks/useSupabaseStatus'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { StoreProvider } from './context/StoreProvider'
+import { CustomerLayout, ConsoleLayout } from './components/layout/Layouts'
 
-// หน้าชั่วคราวสำหรับตรวจว่าเชื่อม Supabase ได้แล้วจริง
-// จะถูกแทนที่ด้วย Router (customer / staff / admin) ในขั้นถัดไป
+import Landing from './pages/Landing'
+
+import CustomerHome from './pages/customer/Home'
+import CustomerMenu from './pages/customer/Menu'
+import CustomerStatus from './pages/customer/Status'
+import CustomerBill from './pages/customer/Bill'
+
+import StaffFloor from './pages/staff/Floor'
+import StaffQueue from './pages/staff/Queue'
+import StaffKitchen from './pages/staff/Kitchen'
+import StaffServe from './pages/staff/Serve'
+import StaffCheckout from './pages/staff/Checkout'
+
+import AdminDashboard from './pages/admin/Dashboard'
+import AdminMenu from './pages/admin/Menu'
+import { AdminPackages, AdminTables, AdminSettings } from './pages/admin/Manage'
+
 export default function App() {
-  const { ok, status, detail } = useSupabaseStatus()
-
-  const tone = status === 'checking' ? 'pending' : ok ? 'good' : 'bad'
-
   return (
-    <main className="boot">
-      <h1>Shabu Mood</h1>
-      <p className="subtitle">Frontend scaffold — Supabase connection check</p>
+    <StoreProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Landing />} />
 
-      <div className={`status status--${tone}`}>
-        <span className="dot" aria-hidden="true" />
-        <div>
-          <strong>{status}</strong>
-          <p>{detail}</p>
-        </div>
-      </div>
+          {/* ฝั่งลูกค้า — ของจริงเข้าผ่าน /v/:token จาก QR บนสลิป */}
+          <Route path="/order" element={<CustomerLayout />}>
+            <Route index element={<CustomerHome />} />
+            <Route path="menu" element={<CustomerMenu />} />
+            <Route path="status" element={<CustomerStatus />} />
+            <Route path="bill" element={<CustomerBill />} />
+          </Route>
 
-      {!ok && status !== 'checking' && (
-        <ol className="fix">
-          <li>
-            สร้างโปรเจกต์ที่ <code>supabase.com/dashboard</code>
-          </li>
-          <li>
-            คัดลอก <code>Project URL</code> และ <code>anon public</code> จาก Project Settings →
-            Data API
-          </li>
-          <li>
-            วางลงใน <code>frontend/.env.local</code>
-          </li>
-          <li>
-            รีสตาร์ท <code>npm run dev</code> (Vite อ่าน env ตอน start เท่านั้น)
-          </li>
-        </ol>
-      )}
-    </main>
+          {/* ฝั่งพนักงาน & ครัว */}
+          <Route path="/staff" element={<ConsoleLayout kind="staff" />}>
+            <Route index element={<StaffFloor />} />
+            <Route path="queue" element={<StaffQueue />} />
+            <Route path="kds" element={<StaffKitchen />} />
+            <Route path="serve" element={<StaffServe />} />
+            <Route path="checkout" element={<StaffCheckout />} />
+          </Route>
+
+          {/* ฝั่งผู้จัดการ */}
+          <Route path="/admin" element={<ConsoleLayout kind="admin" />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="menu" element={<AdminMenu />} />
+            <Route path="packages" element={<AdminPackages />} />
+            <Route path="tables" element={<AdminTables />} />
+            <Route path="settings" element={<AdminSettings />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </StoreProvider>
   )
 }

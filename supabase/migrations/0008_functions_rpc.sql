@@ -163,8 +163,17 @@ begin
     return new;
   end if;
 
+  -- changed_by มี FK ไป profiles ซึ่งมีเฉพาะพนักงาน
+  -- ลูกค้าที่สแกน QR เป็น anonymous user ที่ไม่มีแถวใน profiles
+  -- ถ้าใส่ auth.uid() ตรง ๆ ออเดอร์ที่ "ลูกค้าสั่งเอง" จะติด FK แล้วพังทุกครั้ง
+  -- จึงบันทึกเฉพาะเมื่อผู้กระทำเป็นพนักงานจริง ส่วนลูกค้าสั่งเองให้เป็น null
   insert into order_status_history (order_item_id, from_status, to_status, changed_by)
-  values (new.id, case when tg_op = 'UPDATE' then old.status end, new.status, auth.uid());
+  values (
+    new.id,
+    case when tg_op = 'UPDATE' then old.status end,
+    new.status,
+    (select p.id from profiles p where p.id = auth.uid())
+  );
 
   return new;
 end;
@@ -837,9 +846,10 @@ begin
   select * into v_settings from restaurant_settings where branch_id = v_visit.branch_id;
 
   v_provider := case p_method
-                  when 'cash'     then 'mock_cash'
-                  when 'transfer' then 'mock_promptpay'
-                  when 'card'     then 'mock_card'
+                  when 'cash'         then 'mock_cash'
+                  when 'transfer'     then 'mock_promptpay'
+                  when 'qr_promptpay' then 'mock_promptpay'
+                  when 'card'         then 'mock_card'
                 end::payment_provider;
 
   -- เงินสดเท่านั้นที่ยื่นเกินได้ ส่วนที่เกินคือเงินทอน
@@ -877,6 +887,7 @@ declare
   v_payment payments;
   v_before  jsonb;
   v_due     integer;
+  v_branch  uuid;
 begin
   if not is_staff() then
     raise exception 'เฉพาะพนักงานเท่านั้น' using errcode = '42501';
@@ -893,11 +904,15 @@ begin
 
   v_before := to_jsonb(v_payment);
 
+  select branch_id into v_branch from visits where id = v_payment.visit_id;
+
   -- trigger trg_payments_no_overpay จะตรวจยอดรวมอีกชั้นพร้อมล็อกแถว visit
   update payments
      set status = 'succeeded',
          provider_ref = coalesce(p_provider_ref, provider_ref),
          provider_payload = coalesce(p_payload, provider_payload),
+         receipt_number = next_counter(v_branch, 'receipt'),
+         receipt_date = (now() at time zone 'Asia/Bangkok')::date,
          completed_at = now()
    where id = p_payment_id
   returning * into v_payment;

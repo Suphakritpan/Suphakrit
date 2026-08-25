@@ -1,0 +1,306 @@
+import { useState } from 'react'
+import { useStore } from '../../context/StoreProvider'
+import { TopBar } from '../../components/layout/Layouts'
+import { Chip, Empty, MockBanner, Note } from '../../components/shared/Bits'
+import Icon from '../../components/ui/Icon'
+import { PAYMENT_METHODS, TEST_CARDS, VISIT_STATUS } from '../../data/constants'
+import { baht, satangToText, bahtToSatang, previewBill } from '../../utils/money'
+import { clockTH } from '../../utils/time'
+
+export default function StaffCheckout() {
+  const store = useStore()
+  const [visitId, setVisitId] = useState(null)
+
+  const billable = store.visits.filter((v) => ['open', 'awaiting_payment', 'paid'].includes(v.status))
+  const visit = billable.find((v) => v.id === visitId)
+
+  return (
+    <>
+      <TopBar title="เช็คบิล & ชำระเงิน" sub="เลือกโต๊ะที่ต้องการปิดบิล">
+        <Chip tone="neutral">{billable.length} โต๊ะ</Chip>
+      </TopBar>
+
+      <div className="body">
+        <div style={{ marginBottom: 16 }}><MockBanner /></div>
+
+        {!visit ? (
+          <>
+            {billable.length === 0 && <Empty icon="receipt" title="ยังไม่มีโต๊ะที่ต้องเช็คบิล" />}
+            <div className="floor">
+              {billable.map((v) => {
+                const t = store.tableOf(v.table_id)
+                const bill = previewBill({
+                  visit: v, addons: v.addons,
+                  extraItems: store.extraItemsOf(v.id), settings: store.settings,
+                })
+                const asked = store.serviceRequests.some(
+                  (r) => r.visit_id === v.id && r.type === 'request_bill' && r.status === 'open')
+
+                return (
+                  <button key={v.id} className="tcard tcard--occupied" onClick={() => setVisitId(v.id)}>
+                    <div className="tcard__flags">
+                      {asked && <Chip tone="gold" icon="bell">ขอเช็คบิล</Chip>}
+                    </div>
+                    <p className="tcard__no">{t.table_number}</p>
+                    <p className="t-xs muted num">{v.visit_code}</p>
+                    <p className="t-title num" style={{ marginTop: 8 }}>{baht(bill.total)}</p>
+                    <p className="t-xs muted">
+                      {v.package_name_snapshot} · {v.adult_count + v.child_count} ท่าน
+                    </p>
+                    <div style={{ marginTop: 9 }}>
+                      <Chip tone={VISIT_STATUS[v.status].tone}>{VISIT_STATUS[v.status].label}</Chip>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <BillPanel visit={visit} store={store} onBack={() => setVisitId(null)} />
+        )}
+      </div>
+    </>
+  )
+}
+
+function BillPanel({ visit, store, onBack }) {
+  const s = store.settings
+  const table = store.tableOf(visit.table_id)
+  const extras = store.extraItemsOf(visit.id)
+  const bill = previewBill({ visit, addons: visit.addons, extraItems: extras, settings: s })
+
+  const paid = store.payments
+    .filter((p) => p.visit_id === visit.id && p.status === 'succeeded')
+    .reduce((n, p) => n + p.amount_satang, 0)
+  const due = Math.max(0, bill.total - paid)
+
+  const [method, setMethod] = useState('cash')
+  const [tendered, setTendered] = useState('')
+  const [card, setCard] = useState(TEST_CARDS[0].number)
+  const [phone, setPhone] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const tenderedSatang = bahtToSatang(tendered)
+  const change = method === 'cash' && tenderedSatang > due ? tenderedSatang - due : 0
+  const short = method === 'cash' && tendered !== '' && tenderedSatang < due
+  const cardResult = TEST_CARDS.find((c) => c.number === card)?.result
+
+  const points = s.points_enabled && phone ? Math.floor(bill.total / 100 / s.points_baht_per_point) : 0
+
+  function pay() {
+    setBusy(true); setResult(null)
+    setTimeout(() => {
+      setBusy(false)
+      if (method === 'card' && cardResult !== 'approved') {
+        setResult({ ok: false, text: cardResult === 'declined' ? 'บัตรถูกปฏิเสธ (do_not_honor)' : 'เชื่อมต่อเครื่องรูดบัตรไม่ได้' })
+        return
+      }
+      store.dispatch({ type: 'PAY_VISIT', visitId: visit.id, method, amount: due })
+      setResult({ ok: true, text: 'ชำระเงินสำเร็จ ออกใบเสร็จแล้ว' })
+    }, 850)
+  }
+
+  return (
+    <>
+      <button className="btn btn--quiet btn--sm" style={{ marginBottom: 14 }} onClick={onBack}>
+        <Icon name="arrowLeft" size={15} /> เลือกโต๊ะอื่น
+      </button>
+
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'minmax(0,1fr) minmax(0,368px)', alignItems: 'start' }}>
+        {/* ── ใบเสร็จ ── */}
+        <div className="card pad-l">
+          <div className="between" style={{ marginBottom: 16 }}>
+            <div>
+              <h3 className="t-title">โต๊ะ {table.table_number}</h3>
+              <p className="t-xs muted num">{visit.visit_code} · เข้าร้าน {clockTH(visit.check_in_at)}</p>
+            </div>
+            <Chip tone={VISIT_STATUS[visit.status].tone}>{VISIT_STATUS[visit.status].label}</Chip>
+          </div>
+
+          <div className="slip">
+            {visit.adult_count > 0 && (
+              <L label={`${visit.package_name_snapshot} (ผู้ใหญ่) × ${visit.adult_count}`}
+                 v={visit.adult_count * visit.package_price_adult_satang} />
+            )}
+            {visit.child_count > 0 && (
+              <L label={`${visit.package_name_snapshot} (เด็ก) × ${visit.child_count}`}
+                 v={visit.child_count * visit.package_price_child_satang} />
+            )}
+            {visit.addons.map((a) => (
+              <L key={a.add_on_id} label={`${a.name_snapshot} × ${a.quantity}`}
+                 v={a.unit_price_satang * a.quantity} />
+            ))}
+            {extras.map((e) => (
+              <L key={e.name_snapshot} label={`${e.name_snapshot} × ${e.quantity}`}
+                 v={e.unit_price_satang * e.quantity} />
+            ))}
+
+            <div className="slip__r" />
+            <L label="รวมก่อนภาษี" v={bill.subtotal} />
+            {s.service_charge_enabled && <L label={`Service Charge ${s.service_charge_rate_bp / 100}%`} v={bill.service} />}
+            {s.vat_enabled && (
+              <L label={`VAT ${s.vat_rate_bp / 100}%${s.vat_inclusive ? ' (รวมแล้ว)' : ''}`}
+                 v={s.vat_inclusive ? 0 : bill.vat} />
+            )}
+            <div className="slip__r" />
+            <div className="slip__total"><span>ยอดสุทธิ</span><span className="num">{baht(bill.total)}</span></div>
+
+            {paid > 0 && (
+              <>
+                <L label="ชำระแล้ว" v={-paid} />
+                <div className="slip__total" style={{ fontSize: 14 }}>
+                  <span>คงเหลือ</span><span className="num">{baht(due)}</span>
+                </div>
+              </>
+            )}
+
+            {s.payment_mode === 'mock' && (
+              <p className="t-xs" style={{ marginTop: 14, textAlign: 'center', color: 'var(--brand)', fontWeight: 600 }}>
+                ใบเสร็จทดสอบ — ไม่ใช่เอกสารทางภาษี
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ── ชำระเงิน ── */}
+        <div className="card pad">
+          <h3 className="t-head" style={{ marginBottom: 12 }}>รับชำระเงิน</h3>
+
+          {due === 0 ? (
+            <>
+              <div style={{ marginBottom: 14 }}>
+                <Note tone="ok" icon="check">
+                  ชำระครบแล้ว ขั้นถัดไปคือปิดรอบเพื่อส่งโต๊ะไปทำความสะอาด
+                </Note>
+              </div>
+              <button className="btn btn--primary btn--block" disabled={visit.status !== 'paid'}
+                      onClick={() => { store.dispatch({ type: 'CLOSE_VISIT', visitId: visit.id }); onBack() }}>
+                ปิดรอบ · โต๊ะไปทำความสะอาด
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ textAlign: 'center', padding: '4px 0 16px' }}>
+                <p className="t-xs muted">ยอดที่ต้องชำระ</p>
+                <p className="t-display num" style={{ fontSize: 32 }}>{baht(due)}</p>
+              </div>
+
+              {PAYMENT_METHODS.map((m) => (
+                <button key={m.id} className={`pay ${method === m.id ? 'pay--on' : ''}`}
+                        onClick={() => { setMethod(m.id); setResult(null) }}>
+                  <span className="pay__ico"><Icon name={m.icon} size={17} /></span>
+                  <span className="grow">
+                    <span className="bold t-sm">{m.label}</span>
+                    <span className="t-xs muted" style={{ display: 'block' }}>{m.hint}</span>
+                  </span>
+                  {method === m.id && <span className="pay__check"><Icon name="check" size={17} strokeWidth={2} /></span>}
+                </button>
+              ))}
+
+              <div style={{ marginTop: 16 }}>
+                {method === 'cash' && (
+                  <>
+                    <label className="field">
+                      <span>รับเงินมา (บาท)</span>
+                      <input inputMode="decimal" value={tendered} placeholder={satangToText(due)}
+                             onChange={(e) => setTendered(e.target.value)} />
+                    </label>
+                    <div className="row g8 wrap" style={{ marginBottom: 12 }}>
+                      <button className="btn btn--default btn--sm" onClick={() => setTendered(satangToText(due))}>พอดี</button>
+                      {[500, 1000, 2000].map((n) => (
+                        <button key={n} className="btn btn--default btn--sm" onClick={() => setTendered(String(n))}>
+                          {n.toLocaleString('th-TH')}
+                        </button>
+                      ))}
+                    </div>
+                    {short && <div style={{ marginBottom: 12 }}><Note tone="warn">เงินที่รับมาน้อยกว่ายอดที่ต้องชำระ</Note></div>}
+                    {change > 0 && (
+                      <div className="between" style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--brand-soft)', borderRadius: 'var(--r-md)' }}>
+                        <span className="bold t-sm">เงินทอน</span>
+                        <span className="t-title num" style={{ color: 'var(--brand)' }}>{baht(change)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {method === 'qr_promptpay' && (
+                  <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                    <FauxQR />
+                    <p className="t-xs muted" style={{ marginTop: 10, lineHeight: 1.7 }}>
+                      QR จำลอง — ของจริงสร้าง payload EMVCo จาก PromptPay ID + ยอดเงิน
+                      ให้ลูกค้าสแกน แล้วพนักงานกดยืนยันเมื่อเห็นสลิป
+                    </p>
+                  </div>
+                )}
+
+                {method === 'card' && (
+                  <label className="field">
+                    <span>เลขบัตรทดสอบ</span>
+                    <select value={card} onChange={(e) => setCard(e.target.value)}>
+                      {TEST_CARDS.map((c) => (
+                        <option key={c.number} value={c.number}>{c.number} — {c.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                {method === 'transfer' && (
+                  <div style={{ marginBottom: 12 }}>
+                    <Note tone="info" icon="bank">
+                      ให้ลูกค้าโอนแล้วแสดงสลิป พนักงานตรวจสลิปก่อนกดยืนยัน
+                    </Note>
+                  </div>
+                )}
+              </div>
+
+              <label className="field">
+                <span>เบอร์โทรสมาชิก (ไม่บังคับ)</span>
+                <input inputMode="tel" value={phone} placeholder="08X-XXX-XXXX"
+                       onChange={(e) => setPhone(e.target.value)} />
+              </label>
+              {points > 0 && (
+                <div className="between" style={{ marginBottom: 12 }}>
+                  <span className="t-sm muted">แต้มที่จะได้รับ</span>
+                  <Chip tone="gold" icon="sparkle">+{points}</Chip>
+                </div>
+              )}
+
+              {result && (
+                <div style={{ marginBottom: 12 }}>
+                  <Note tone={result.ok ? 'ok' : 'warn'} icon={result.ok ? 'check' : 'alert'}>{result.text}</Note>
+                </div>
+              )}
+
+              <button className="btn btn--primary btn--lg btn--block"
+                      disabled={busy || short || (method === 'cash' && tendered === '')}
+                      onClick={pay}>
+                {busy ? 'กำลังดำเนินการ…' : `ยืนยันรับชำระ ${baht(due)}`}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function L({ label, v }) {
+  return <div className="slip__l"><span>{label}</span><span className="num">{baht(v)}</span></div>
+}
+
+/** บล็อกลาย QR จำลอง ไม่ใช่ QR ที่สแกนได้จริง */
+function FauxQR() {
+  const cells = Array.from({ length: 169 }, (_, i) => (i * 7919) % 11 > 4)
+  return (
+    <div style={{
+      width: 156, height: 156, margin: '0 auto', padding: 8, background: '#fff',
+      border: '1px solid var(--n200)', borderRadius: 'var(--r-md)',
+      display: 'grid', gridTemplateColumns: 'repeat(13, 1fr)', gap: 1,
+    }} aria-label="QR จำลอง">
+      {cells.map((on, i) => (
+        <div key={i} style={{ background: on ? 'var(--n900)' : 'transparent', borderRadius: 1 }} />
+      ))}
+    </div>
+  )
+}
