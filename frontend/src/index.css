@@ -1,0 +1,96 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --text: #e7e9ee;
+  --muted: #9aa1ae;
+  --good: #34d399;
+  --bad: #f87171;
+  --pending: #fbbf24;
+
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Noto Sans Thai', sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.boot {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+.boot h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0.25rem 0 2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.status {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: var(--panel);
+  border: 1px solid #ffffff14;
+}
+
+.status strong {
+  font-size: 0.95rem;
+}
+
+.status p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.status--good .dot {
+  background: var(--good);
+}
+.status--bad .dot {
+  background: var(--bad);
+}
+.status--pending .dot {
+  background: var(--pending);
+}
+
+.fix {
+  margin-top: 1.5rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.9;
+}
+
+code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  background: #ffffff14;
+  color: var(--text);
+  font-size: 0.85em;
+}
