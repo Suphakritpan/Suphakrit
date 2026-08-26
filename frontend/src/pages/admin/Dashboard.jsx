@@ -13,8 +13,7 @@ export default function AdminDashboard() {
   const peak = Math.max(...d.hourly.map((h) => h.v))
 
   const live = store.tables.map((t) => {
-    const v = store.visits.find(
-      (x) => x.table_id === t.id && ['open', 'awaiting_payment', 'paid'].includes(x.status))
+    const v = store.activeVisitOf(t.id)
     if (!v) return { table: t, total: 0, guests: 0, visit: null }
     const bill = previewBill({
       visit: v, addons: v.addons,

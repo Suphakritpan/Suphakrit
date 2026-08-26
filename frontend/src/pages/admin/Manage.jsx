@@ -1,6 +1,6 @@
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
-import { Chip, Note } from '../../components/shared/Bits'
+import { Chip, Note, Kv } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { baht } from '../../utils/money'
 import { TABLE_STATUS } from '../../data/constants'
@@ -92,8 +92,7 @@ export function AdminTables() {
             <div className="floor">
               {store.tables.filter((t) => t.zone === z).map((t) => {
                 const meta = TABLE_STATUS[t.status]
-                const visit = store.visits.find(
-                  (v) => v.table_id === t.id && ['open', 'awaiting_payment', 'paid'].includes(v.status))
+                const visit = store.activeVisitOf(t.id)
                 return (
                   <div key={t.id} className={`tcard ${meta.cls}`}>
                     <div className="between">
@@ -186,11 +185,3 @@ export function AdminSettings() {
   )
 }
 
-function Kv({ label, value }) {
-  return (
-    <div className="between t-sm">
-      <span className="muted">{label}</span>
-      <span className="bold num">{value}</span>
-    </div>
-  )
-}

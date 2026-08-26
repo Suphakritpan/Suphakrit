@@ -6,11 +6,21 @@ Postgres บน Supabase · 28 ตาราง · 32 ฟังก์ชัน ·
 
 ### วิธีที่ 1 — ไฟล์เดียวจบ (แนะนำสำหรับติดตั้งครั้งแรก)
 
-Supabase Dashboard → **SQL Editor** → วางไฟล์ `APPLY_ALL.sql` ทั้งไฟล์ → Run
+ต่อไฟล์ทั้งหมดเข้าด้วยกันก่อน แล้ววางผลลัพธ์ลง SQL Editor ทีเดียว
 
-> ⚠️ `APPLY_ALL.sql` ขึ้นต้นด้วย `drop schema public cascade`
-> มันจะ **ล้างทุกอย่างใน schema public ทิ้ง** แล้วสร้างใหม่จากศูนย์
-> ห้ามรันกับฐานข้อมูลที่มีข้อมูลจริง
+```bash
+cat supabase/migrations/*.sql supabase/seed.sql > /tmp/shabu-install.sql
+```
+
+Supabase Dashboard → **SQL Editor** → วางไฟล์ที่ได้ทั้งไฟล์ → Run
+
+> ⚠️ ใช้กับ project เปล่าเท่านั้น
+> `migrations/0001` สร้าง extension และ ENUM ทับของเดิม
+> ถ้าฐานข้อมูลมีข้อมูลจริงอยู่แล้ว ให้ข้ามไปวิธีที่ 2 แล้วรันเฉพาะไฟล์ที่ยังไม่ได้รัน
+
+> เมื่อก่อนมีไฟล์ `APPLY_ALL.sql` ที่รวมทุกอย่างไว้ให้แล้ว — เอาออกเพราะเป็น schema ก๊อปที่สอง
+> ที่ต้องซิงก์ด้วยมือทุกครั้งที่แก้ migration ถ้าลืมซิงก์จะเพี้ยนแบบเงียบ ๆ (ไม่มี test จับ)
+> `cat` ข้างบนให้ผลเหมือนกันโดยไม่ต้องมีก๊อปที่สอง
 
 ### วิธีที่ 2 — ทีละไฟล์
 
@@ -164,7 +174,19 @@ const { data: v } = await supabase.rpc('open_visit', {
 
 ## โฟลเดอร์ `_archive_alt_design/`
 
+> 🚫 **ห้ามรันไฟล์ในโฟลเดอร์นี้กับ Supabase เด็ดขาด**
+>
+> เคยเกิดขึ้นมาแล้ว: ดีไซน์ชุดนี้ถูก apply ขึ้น project จริงแทน `migrations/`
+> ผลคือ frontend ใช้งานไม่ได้เลย เพราะ RPC ที่ `api/mutations.js` เรียก
+> (`join_visit`, `close_visit`, `create_payment`, `confirm_payment`, `advance_order_item`)
+> ไม่มีอยู่ในชุดนี้ และชื่อตารางก็คนละชุด (`dining_tables` ไม่ใช่ `tables`,
+> `addons` ไม่ใช่ `add_ons`, `staff_calls` ไม่ใช่ `service_requests`,
+> `staff` ไม่ใช่ `profiles`) — `probeSchema()` จะ fail แล้วแอปค้างอยู่โหมด demo ตลอด
+>
+> ของจริงที่ต้องรันคือ `migrations/` เท่านั้น ดูหัวข้อ "ติดตั้ง" ด้านบน
+
 ดีไซน์อีกชุดที่เคยเขียนคู่ขนานกัน (22 ตาราง, `dining_tables`/`staff`/`addons`, เงินเป็น numeric,
+`staff_role` เป็นตัวใหญ่ `ADMIN`/`MANAGER`/… ไม่มี `owner`, `branches` ไม่มีคอลัมน์ `code`,
 ลูกค้าเข้าผ่าน token ล้วนโดยไม่ล็อกอิน) เก็บไว้อ้างอิงเท่านั้น **ไม่ได้ถูกใช้แล้ว**
 แนวคิดที่ดีจากชุดนั้นถูกยกมาใส่ชุดนี้แล้ว: `order_status_history`, `qr_promptpay` เป็น
 payment method แยก, เลขใบเสร็จรันรายวัน และ RPC แบบ token ล้วนใน `0010_token_fallback.sql`

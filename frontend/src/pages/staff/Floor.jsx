@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
-import { Chip, TimeMeter, Countdown, Note, useTick } from '../../components/shared/Bits'
+import { Chip, TimeMeter, Countdown, Note, Kv, useTick } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { TABLE_STATUS, SERVICE_TYPES, VISIT_STATUS } from '../../data/constants'
 import { baht, previewBill } from '../../utils/money'
@@ -14,8 +14,7 @@ export default function StaffFloor() {
   const [seatFor, setSeatFor] = useState(null)
   const [zone, setZone] = useState('all')
 
-  const activeVisit = (tid) =>
-    store.visits.find((v) => v.table_id === tid && ['open', 'awaiting_payment', 'paid'].includes(v.status))
+  const activeVisit = store.activeVisitOf
 
   const counts = store.tables.reduce((a, t) => ({ ...a, [t.status]: (a[t.status] ?? 0) + 1 }), {})
   const zones = [...new Set(store.tables.map((t) => t.zone))]
@@ -186,12 +185,12 @@ function VisitPanel({ visit, store, onDone }) {
       </div>
 
       <div className="stack g8">
-        <Kv label="แพ็กเกจ" value={visit.package_name_snapshot} />
+        <Kv label="แพ็กเกจ" value={visit.package_name_snapshot} mono={false} />
         <Kv label="ผู้ใหญ่ / เด็ก" value={`${visit.adult_count} / ${visit.child_count}`} />
         {visit.addons.map((a) => (
           <Kv key={a.add_on_id} label={a.name_snapshot} value={`${a.quantity} ท่าน`} />
         ))}
-        <Kv label="รหัสเข้าโต๊ะ" value={visit.access_code ?? '—'} mono />
+        <Kv label="รหัสเข้าโต๊ะ" value={visit.access_code ?? '—'} />
       </div>
 
       {visit.status === 'paid' && (
@@ -204,14 +203,6 @@ function VisitPanel({ visit, store, onDone }) {
   )
 }
 
-function Kv({ label, value, mono }) {
-  return (
-    <div className="between t-sm">
-      <span className="muted">{label}</span>
-      <span className={`bold ${mono ? 'num' : ''}`}>{value}</span>
-    </div>
-  )
-}
 
 function SeatSheet({ table, store, onClose }) {
   const [pkgId, setPkg] = useState(store.packages[0].id)

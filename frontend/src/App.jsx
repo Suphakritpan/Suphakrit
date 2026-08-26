@@ -3,6 +3,7 @@ import { StoreProvider } from './context/StoreProvider'
 import { CustomerLayout, ConsoleLayout } from './components/layout/Layouts'
 
 import Landing from './pages/Landing'
+import Join from './pages/Join'
 
 import CustomerHome from './pages/customer/Home'
 import CustomerMenu from './pages/customer/Menu'
@@ -25,6 +26,9 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
+
+          {/* QR บนสลิป — ผูก session เข้ากับ visit แล้วเด้งไป /order */}
+          <Route path="/v/:token" element={<Join />} />
 
           {/* ฝั่งลูกค้า — ของจริงเข้าผ่าน /v/:token จาก QR บนสลิป */}
           <Route path="/order" element={<CustomerLayout />}>

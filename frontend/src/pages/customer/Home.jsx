@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../context/StoreProvider'
 import { CustomerBar } from '../../components/layout/Layouts'
-import { Countdown, Chip, Note, Photo } from '../../components/shared/Bits'
+import { Countdown, Chip, Note, Photo, Kv } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { SERVICE_TYPES } from '../../data/constants'
 import { baht } from '../../utils/money'
@@ -95,12 +95,12 @@ export default function CustomerHome() {
               <p className="t-sm muted">{pkg.description}</p>
 
               <div className="stack g8" style={{ marginTop: 14 }}>
-                <Line label="ผู้ใหญ่" value={`${visit.adult_count} ท่าน`} />
-                {visit.child_count > 0 && <Line label="เด็ก" value={`${visit.child_count} ท่าน`} />}
+                <Kv label="ผู้ใหญ่" value={`${visit.adult_count} ท่าน`} />
+                {visit.child_count > 0 && <Kv label="เด็ก" value={`${visit.child_count} ท่าน`} />}
                 {visit.addons.map((a) => (
-                  <Line key={a.add_on_id} label={a.name_snapshot} value={`${a.quantity} ท่าน`} />
+                  <Kv key={a.add_on_id} label={a.name_snapshot} value={`${a.quantity} ท่าน`} />
                 ))}
-                <Line label="เวลานั่ง" value={`${pkg.dining_minutes} นาที`} />
+                <Kv label="เวลานั่ง" value={`${pkg.dining_minutes} นาที`} />
               </div>
 
               {!isPremium && (
@@ -136,11 +136,3 @@ export default function CustomerHome() {
   )
 }
 
-function Line({ label, value }) {
-  return (
-    <div className="between t-sm">
-      <span className="muted">{label}</span>
-      <span className="bold num">{value}</span>
-    </div>
-  )
-}

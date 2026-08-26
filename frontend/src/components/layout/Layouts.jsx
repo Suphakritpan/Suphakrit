@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useStore } from '../../context/StoreProvider'
 import { Toaster, ConnectionBadge } from '../shared/Bits'
 import Icon from '../ui/Icon'
+import Login from '../../pages/Login'
 
 // ── ฝั่งลูกค้า ───────────────────────────────────────────────────────────────
 // มือถือ: แถบนำทางติดขอบล่าง · จอกว้าง: กลายเป็นแท็บแนวนอนใต้หัวเรื่อง
@@ -82,6 +83,10 @@ export function ConsoleLayout({ kind }) {
   const store = useStore()
   const items = kind === 'admin' ? ADMIN_NAV : STAFF_NAV
 
+  // โหมด demo ยังไม่มีฐานข้อมูลให้ล็อกอิน ปล่อยเข้าดูจอได้
+  // พอต่อของจริงแล้ว ไม่มี session ก็ไม่มีข้อมูล เพราะ RLS ปัดทุก query
+  if (store.mode === 'live' && !store.session) return <Login kind={kind} />
+
   const counts = {
     queue: store.queueTickets.filter((q) => q.status === 'waiting' || q.status === 'called').length,
     kitchen: store.kitchenTickets().reduce((n, t) => n + t.items.length, 0),
@@ -112,10 +117,17 @@ export function ConsoleLayout({ kind }) {
 
         <div className="side__foot">
           <div className="side__sep" />
-          <NavLink to="/">
-            <Icon name="logout" size={18} />
-            <span>ออกจากคอนโซล</span>
-          </NavLink>
+          {store.session ? (
+            <a href="/" onClick={(e) => { e.preventDefault(); store.signOut() }}>
+              <Icon name="logout" size={18} />
+              <span>ออกจากระบบ{store.profile?.full_name ? ` · ${store.profile.full_name}` : ''}</span>
+            </a>
+          ) : (
+            <NavLink to="/">
+              <Icon name="logout" size={18} />
+              <span>ออกจากคอนโซล</span>
+            </NavLink>
+          )}
         </div>
       </aside>
 

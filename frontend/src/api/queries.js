@@ -31,7 +31,7 @@ export async function probeSchema() {
   if (missing) {
     return {
       ready: false,
-      reason: 'เชื่อม Supabase ได้ แต่ยังไม่ได้ติดตั้ง schema — เปิด SQL Editor แล้วรัน supabase/APPLY_ALL.sql',
+      reason: 'เชื่อม Supabase ได้ แต่ยังไม่ได้ติดตั้ง schema — ดูวิธีติดตั้งใน supabase/README.md',
     }
   }
 

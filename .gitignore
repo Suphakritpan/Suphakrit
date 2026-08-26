@@ -21,3 +21,9 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude local overrides
+.claude/settings.local.json
+
+# ไฟล์ติดตั้ง generate จาก supabase/migrations - ไม่ใช่ source
+shabu-install.sql

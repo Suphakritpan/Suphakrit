@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
-import { Chip, Empty, Note, useTick } from '../../components/shared/Bits'
+import { Chip, Empty, Note, Kv, useTick } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { baht } from '../../utils/money'
 import { minutesSince } from '../../utils/time'
@@ -58,8 +58,8 @@ export default function StaffQueue() {
                 </div>
 
                 <div className="stack g8" style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--n100)' }}>
-                  <Kv label="ชื่อ" value={q.customer_name} />
-                  <Kv label="เบอร์โทร" value={q.phone} mono />
+                  <Kv label="ชื่อ" value={q.customer_name} mono={false} />
+                  <Kv label="เบอร์โทร" value={q.phone} />
                   <Kv label="จำนวน" value={`${q.party_size} ท่าน`} />
                   <Kv
                     label="โต๊ะที่รองรับได้"
@@ -87,14 +87,6 @@ export default function StaffQueue() {
   )
 }
 
-function Kv({ label, value, mono }) {
-  return (
-    <div className="between t-sm">
-      <span className="muted">{label}</span>
-      <span className={`bold ${mono ? 'num' : ''}`}>{value}</span>
-    </div>
-  )
-}
 
 function SeatFromQueue({ ticket, tables, store, onClose }) {
   const [tableId, setTableId] = useState(tables[0].id)

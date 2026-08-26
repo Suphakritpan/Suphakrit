@@ -45,6 +45,19 @@ export async function signOut() {
   await supabase.auth.signOut()
 }
 
+/** แจ้งเมื่อ session เปลี่ยน — ล็อกอิน ออก หรือ token หมดอายุระหว่างใช้งาน */
+export function onAuthChange(fn) {
+  if (!supabase) return () => {}
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => fn(session))
+  return () => data.subscription.unsubscribe()
+}
+
+export async function currentSession() {
+  if (!supabase) return null
+  const { data } = await supabase.auth.getSession()
+  return data.session ?? null
+}
+
 /** โปรไฟล์พนักงานของ session ปัจจุบัน — null ถ้าเป็นลูกค้า */
 export async function currentProfile() {
   const { data: s } = await supabase.auth.getUser()

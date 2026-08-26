@@ -20,6 +20,9 @@ import * as api from '../api/mutations'
 
 const StoreCtx = createContext(null)
 
+/** สถานะของรอบที่ยังไม่ปิด — ตรงกับที่ queries.js กรอง และที่ RLS ยอมให้เห็น */
+const ACTIVE_VISIT = ['open', 'awaiting_payment', 'paid']
+
 const initial = {
   tables: demo.tables,
   visits: demo.visits,
@@ -206,6 +209,24 @@ export function StoreProvider({ children }) {
   const [dash, setDash] = useState(demo.dashboard)
   const refreshing = useRef(false)
 
+  // ── ตัวตน ─────────────────────────────────────────────────────────────────
+  // session = ทั้งพนักงานที่ล็อกอิน และลูกค้าที่ได้ anonymous session จากการสแกน QR
+  const [session, setSession] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [joinedVisitId, setJoinedVisitId] = useState(null)
+
+  useEffect(() => {
+    api.currentSession().then(setSession)
+    return api.onAuthChange(setSession)
+  }, [])
+
+  useEffect(() => {
+    if (!session) { setProfile(null); return }
+    let alive = true
+    api.currentProfile().then((p) => { if (alive) setProfile(p) }).catch(() => {})
+    return () => { alive = false }
+  }, [session])
+
   // ── ตรวจว่าฐานข้อมูลพร้อมไหม แล้วเลือกโหมด ────────────────────────────────
   useEffect(() => {
     let alive = true
@@ -362,6 +383,16 @@ export function StoreProvider({ children }) {
     }
   }, [mode, state.orders, state.visits, state.menuItems, reference, refresh])
 
+  // ── ลูกค้าสแกน QR จากสลิป → /v/:token ───────────────────────────────────
+  // join_visit ผูก anonymous session เข้ากับ visit ที่ token ชี้ไว้
+  // ถ้า token ตาย (ปิดบิลแล้ว) ฟังก์ชันฝั่งฐานข้อมูลจะโยน error ภาษาไทยกลับมาเอง
+  const joinByToken = useCallback(async (token) => {
+    const visit = await api.joinVisit({ sessionToken: token })
+    setJoinedVisitId(visit.id)
+    await refresh()
+    return visit
+  }, [refresh])
+
   // ── รวมข้อมูลให้หน้าจอใช้ — รูปทรงเดียวกันทั้งสองโหมด ─────────────────────
   const api_ = useMemo(() => {
     const live = mode === 'live' && reference
@@ -377,6 +408,11 @@ export function StoreProvider({ children }) {
     const ordersOf = (visitId) => state.orders.filter((o) => o.visit_id === visitId)
     const visitOf = (visitId) => state.visits.find((v) => v.id === visitId)
     const tableOf = (tableId) => tables.find((t) => t.id === tableId)
+
+    // รอบที่ยังไม่ปิด — กฎเดียวกับ RLS และ RPC ฝั่งฐานข้อมูล อยู่ที่นี่ที่เดียว
+    const activeVisits = () => state.visits.filter((v) => ACTIVE_VISIT.includes(v.status))
+    const activeVisitOf = (tableId) =>
+      state.visits.find((v) => v.table_id === tableId && ACTIVE_VISIT.includes(v.status))
 
     const kitchenTickets = () =>
       state.orders
@@ -412,9 +448,8 @@ export function StoreProvider({ children }) {
     }
 
     // ฝั่งลูกค้า: ของจริงมาจาก /v/:token — ในเดโมหยิบโต๊ะที่เปิดอยู่ใบแรกมาแสดง
-    const customerVisitId = live
-      ? (state.visits.find((v) => v.status === 'open')?.id ?? null)
-      : demo.CUSTOMER_VISIT_ID
+    const customerVisitId = joinedVisitId
+      ?? (live ? (state.visits.find((v) => v.status === 'open')?.id ?? null) : demo.CUSTOMER_VISIT_ID)
 
     return {
       ...state,
@@ -422,11 +457,15 @@ export function StoreProvider({ children }) {
       tables, menuItems, settings, packages, addOns, categories, stations,
       dashboard: live ? dash : demo.dashboard,
       customerVisitId,
-      ordersOf, visitOf, tableOf,
+      session, profile,
+      ordersOf, visitOf, tableOf, activeVisits, activeVisitOf,
       kitchenTickets, readyToServe, openRequests, extraItemsOf,
       refresh, dispatch,
+      signInStaff: api.signInStaff,
+      signOut: api.signOut,
+      joinByToken,
     }
-  }, [state, mode, conn, reference, dash, refresh, dispatch])
+  }, [state, mode, conn, reference, dash, refresh, dispatch, session, profile, joinedVisitId, joinByToken])
 
   return <StoreCtx.Provider value={api_}>{children}</StoreCtx.Provider>
 }

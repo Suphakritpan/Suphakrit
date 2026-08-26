@@ -11,7 +11,7 @@ export default function StaffCheckout() {
   const store = useStore()
   const [visitId, setVisitId] = useState(null)
 
-  const billable = store.visits.filter((v) => ['open', 'awaiting_payment', 'paid'].includes(v.status))
+  const billable = store.activeVisits()
   const visit = billable.find((v) => v.id === visitId)
 
   return (

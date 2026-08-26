@@ -80,6 +80,16 @@ export function Note({ tone = 'info', icon = 'alert', children }) {
 }
 
 /** รูปที่มีพื้นสำรองตอนโหลดไม่ขึ้น — กันกล่องรูปแตกบนหน้าจอลูกค้า */
+/** แถวป้ายกำกับ–ค่า ที่ใช้ซ้ำทั่วทั้งแผ่นข้อมูลและการ์ด */
+export function Kv({ label, value, mono = true }) {
+  return (
+    <div className="between t-sm">
+      <span className="muted">{label}</span>
+      <span className={`bold ${mono ? 'num' : ''}`}>{value}</span>
+    </div>
+  )
+}
+
 export function Photo({ src, alt = '', className = '', style }) {
   const [failed, setFailed] = useState(false)
   if (failed || !src) {
