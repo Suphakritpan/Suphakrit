@@ -20,6 +20,17 @@ import * as api from '../api/mutations'
 
 const StoreCtx = createContext(null)
 
+/** เพดานเวลาต่อหนึ่งขั้นตอนตอนเปิดแอป — เกินแล้วถือว่าต่อไม่ติด ดีกว่าค้างเงียบ */
+const BOOT_TIMEOUT_MS = 12000
+
+function withTimeout(promise, label, ms = BOOT_TIMEOUT_MS) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label}นานเกิน ${ms / 1000} วินาที — เช็คอินเทอร์เน็ตหรือสถานะ Supabase`)), ms)),
+  ])
+}
+
 /** สถานะของรอบที่ยังไม่ปิด — ตรงกับที่ queries.js กรอง และที่ RLS ยอมให้เห็น */
 const ACTIVE_VISIT = ['open', 'awaiting_payment', 'paid']
 
@@ -237,10 +248,22 @@ export function StoreProvider({ children }) {
   }, [session])
 
   // ── ตรวจว่าฐานข้อมูลพร้อมไหม แล้วเลือกโหมด ────────────────────────────────
+  //
+  // ทุกขั้นตอนต้องมีเพดานเวลา ไม่งั้นถ้า Supabase ตอบช้าหรือติด rate limit
+  // หน้าจอจะค้างที่ "กำลังเชื่อมต่อ" ตลอดกาล — ลูกค้าในร้านจ้องจอเปล่าโดยไม่รู้ว่าเกิดอะไร
+  // เจอจริงตอนรัน E2E ที่เปิด context ใหม่ทุกเทสต์จนชน rate limit ของ anonymous sign-in
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const probe = await probeSchema()
+      let probe
+      try {
+        probe = await withTimeout(probeSchema(), 'ตรวจสอบฐานข้อมูล')
+      } catch (e) {
+        if (!alive) return
+        setMode('demo')
+        setConn({ status: 'demo', reason: e.message })
+        return
+      }
       if (!alive) return
 
       if (!probe.ready) {
@@ -253,7 +276,7 @@ export function StoreProvider({ children }) {
       // ต้องมี session ก่อนโหลดข้อมูลอ้างอิง ไม่ใช่รอตอนลูกค้าสแกน QR
       // พนักงานที่ล็อกอินอยู่แล้วไม่กระทบ signInAnonymously คืน session เดิมให้
       try {
-        await api.signInAnonymously()
+        await withTimeout(api.signInAnonymously(), 'เข้าสู่ระบบผู้เยี่ยมชม')
       } catch (e) {
         if (!alive) return
         setMode('demo')
@@ -263,7 +286,7 @@ export function StoreProvider({ children }) {
       if (!alive) return
 
       try {
-        const ref = await loadReference()
+        const ref = await withTimeout(loadReference(), 'โหลดข้อมูลอ้างอิง')
         if (!alive) return
         setReference(ref)
         setMode('live')

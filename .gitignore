@@ -31,3 +31,8 @@ shabu-install.sql
 # Playwright MCP artifacts + temp
 .playwright-mcp/
 *.tmp
+
+# Playwright E2E output
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
