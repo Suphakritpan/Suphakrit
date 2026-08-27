@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
-import { Chip, TimeMeter, Countdown, Note, Kv, useTick } from '../../components/shared/Bits'
+import { Chip, TimeMeter, Countdown, Note, Kv, TableSlip, useTick } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { TABLE_STATUS, SERVICE_TYPES, VISIT_STATUS } from '../../data/constants'
 import { baht, previewBill } from '../../utils/money'
@@ -12,6 +12,7 @@ export default function StaffFloor() {
   const store = useStore()
   const [openId, setOpenId] = useState(null)
   const [seatFor, setSeatFor] = useState(null)
+  const [slip, setSlip] = useState(null)   // ใบรับประทานที่เพิ่งออก
   const [zone, setZone] = useState('all')
 
   const activeVisit = store.activeVisitOf
@@ -93,7 +94,7 @@ export default function StaffFloor() {
                       <span className="trunc muted">
                         {v.package_name_snapshot} · {v.adult_count + v.child_count} ท่าน
                       </span>
-                      <span className="num bold" style={{ color: r.over ? 'var(--danger)' : 'var(--n600)' }}>
+                      <span className="num bold" style={{ color: r.over ? 'var(--danger)' : 'var(--n200)' }}>
                         {r.over ? 'หมดเวลา' : `${r.totalMinutes} น.`}
                       </span>
                     </div>
@@ -152,12 +153,22 @@ export default function StaffFloor() {
         </div>
       )}
 
-      {seatFor && <SeatSheet table={seatFor} store={store} onClose={() => setSeatFor(null)} />}
+      {seatFor && (
+        <SeatSheet
+          table={seatFor} store={store}
+          onClose={() => setSeatFor(null)}
+          onSeated={(visit, table) => { setSeatFor(null); setSlip({ visit, table }) }}
+        />
+      )}
+      {slip && (
+        <TableSlip visit={slip.visit} tableNumber={slip.table.table_number} onClose={() => setSlip(null)} />
+      )}
     </>
   )
 }
 
 function VisitPanel({ visit, store, onDone }) {
+  const [editing, setEditing] = useState(false)
   const extras = store.extraItemsOf(visit.id)
   const bill = previewBill({ visit, addons: visit.addons, extraItems: extras, settings: store.settings })
   const orders = store.ordersOf(visit.id)
@@ -186,12 +197,24 @@ function VisitPanel({ visit, store, onDone }) {
 
       <div className="stack g8">
         <Kv label="แพ็กเกจ" value={visit.package_name_snapshot} mono={false} />
-        <Kv label="ผู้ใหญ่ / เด็ก" value={`${visit.adult_count} / ${visit.child_count}`} />
+        <div className="between t-sm">
+          <span className="muted">ผู้ใหญ่ / เด็ก</span>
+          <span className="row g8">
+            <span className="bold num">{visit.adult_count} / {visit.child_count}</span>
+            {visit.status === 'open' && (
+              <button className="btn btn--quiet btn--sm" onClick={() => setEditing(true)}>
+                <Icon name="users" size={14} /> แก้
+              </button>
+            )}
+          </span>
+        </div>
         {visit.addons.map((a) => (
           <Kv key={a.add_on_id} label={a.name_snapshot} value={`${a.quantity} ท่าน`} />
         ))}
         <Kv label="รหัสเข้าโต๊ะ" value={visit.access_code ?? '—'} />
       </div>
+
+      {editing && <GuestSheet visit={visit} store={store} onClose={() => setEditing(false)} />}
 
       {visit.status === 'paid' && (
         <button className="btn btn--primary btn--block" style={{ marginTop: 16 }}
@@ -204,7 +227,61 @@ function VisitPanel({ visit, store, onDone }) {
 }
 
 
-function SeatSheet({ table, store, onClose }) {
+// เพื่อนมาเพิ่มระหว่างมื้อ หรือเปิดจำนวนคนผิดตั้งแต่แรก
+// แก้ได้เฉพาะตอนยังเป็น open — ขอบิลแล้วฐานข้อมูลจะปฏิเสธเอง
+function GuestSheet({ visit, store, onClose }) {
+  const [adults, setAdults] = useState(visit.adult_count)
+  const [children, setChildren] = useState(visit.child_count)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function save() {
+    setBusy(true); setError(null)
+    try {
+      await store.adjustGuests(visit.id, adults, children)
+      onClose()
+    } catch (e) { setError(e.message); setBusy(false) }
+  }
+
+  return (
+    <div className="sheet" onClick={onClose}>
+      <div className="sheet__box" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet__hd">
+          <h3 className="t-title">แก้จำนวนคน</h3>
+          <p className="t-xs muted" style={{ marginTop: 3 }}>
+            ออเดอร์ที่สั่งไปแล้วไม่ถูกแตะ · ราคายังเป็นราคาตอนเปิดโต๊ะ
+          </p>
+        </div>
+        <div className="sheet__bd">
+          <div className="row g12">
+            <label className="field grow">
+              <span>ผู้ใหญ่</span>
+              <input type="number" min="0" value={adults}
+                     onChange={(e) => setAdults(Math.max(0, +e.target.value || 0))} />
+            </label>
+            <label className="field grow">
+              <span>เด็ก</span>
+              <input type="number" min="0" value={children}
+                     onChange={(e) => setChildren(Math.max(0, +e.target.value || 0))} />
+            </label>
+          </div>
+          <p className="t-sm muted">รวม {adults + children} ท่าน</p>
+          {error && <div style={{ marginTop: 12 }}><Note tone="warn" icon="alert">{error}</Note></div>}
+        </div>
+        <div className="sheet__ft">
+          <button className="btn btn--default" onClick={onClose}>ยกเลิก</button>
+          <button className="btn btn--primary grow" disabled={busy || adults + children < 1} onClick={save}>
+            {busy ? 'กำลังบันทึก…' : 'บันทึก'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SeatSheet({ table, store, onClose, onSeated }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
   const [pkgId, setPkg] = useState(store.packages[0].id)
   const [adults, setAdults] = useState(2)
   const [children, setChildren] = useState(0)
@@ -263,6 +340,8 @@ function SeatSheet({ table, store, onClose }) {
             {refill && <span className="pay__check"><Icon name="check" size={17} strokeWidth={2} /></span>}
           </button>
 
+          {error && <div style={{ marginTop: 12 }}><Note tone="warn" icon="alert">{error}</Note></div>}
+
           {guests > table.capacity && (
             <div style={{ marginTop: 12 }}>
               <Note tone="warn">จำนวน {guests} ท่าน เกินความจุโต๊ะ ({table.capacity} ที่นั่ง)</Note>
@@ -277,12 +356,17 @@ function SeatSheet({ table, store, onClose }) {
 
         <div className="sheet__ft">
           <button className="btn btn--default" onClick={onClose}>ยกเลิก</button>
-          <button className="btn btn--primary grow" disabled={guests < 1}
-                  onClick={() => {
-                    store.dispatch({ type: 'SEAT_TABLE', tableId: table.id, packageId: pkgId, adults, children, refill })
-                    onClose()
+          <button className="btn btn--primary grow" disabled={guests < 1 || busy}
+                  onClick={async () => {
+                    setBusy(true); setError(null)
+                    try {
+                      const visit = await store.seatTable({
+                        tableId: table.id, packageId: pkgId, adults, children, refill,
+                      })
+                      onSeated(visit, table)
+                    } catch (e) { setError(e.message); setBusy(false) }
                   }}>
-            <Icon name="printer" size={16} /> เปิดโต๊ะ & พิมพ์สลิป QR
+            <Icon name="printer" size={16} /> {busy ? 'กำลังเปิดโต๊ะ…' : 'เปิดโต๊ะ & พิมพ์ใบรับประทาน'}
           </button>
         </div>
       </div>

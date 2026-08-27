@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { remaining, elapsedRatio } from '../../utils/time'
 import { useStore } from '../../context/StoreProvider'
 import Icon from '../ui/Icon'
@@ -60,6 +61,116 @@ export function Step({ value, onAdd, onSub, max }) {
   )
 }
 
+/**
+ * QR ที่สแกนได้จริง — เข้ารหัสเป็น SVG แล้ววาดลง data URI
+ *
+ * ระดับแก้ความผิดพลาด M: ทนรอยเปื้อน/รอยพับบนสลิปกระดาษได้ราว 15%
+ * ซึ่งเป็นเรื่องปกติของบัตรคิวที่ลูกค้าถือเดินไปมา
+ */
+export function QR({ value, size = 168, className = '', style }) {
+  const [svg, setSvg] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    QRCode.toString(String(value ?? ''), {
+      type: 'svg', errorCorrectionLevel: 'M', margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    })
+      .then((out) => { if (alive) setSvg(out) })
+      .catch(() => { if (alive) setSvg(null) })
+    return () => { alive = false }
+  }, [value])
+
+  const box = {
+    width: size, height: size, padding: 8, background: '#fff',
+    borderRadius: 'var(--r-sm)', display: 'block', ...style,
+  }
+  if (!svg) return <div className={className} style={box} aria-hidden="true" />
+  return (
+    <img
+      className={className}
+      style={box}
+      alt="QR สำหรับสแกน"
+      src={`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`}
+    />
+  )
+}
+
+/**
+ * สลิปเปิดโต๊ะ — ลูกค้าสแกน QR บนใบนี้แล้วสั่งอาหารจากมือถือตัวเองได้เลย
+ *
+ * QR ผูกกับ session_token ของรอบนี้ ซึ่งถูกล้างเป็น null ตอนปิดบิล
+ * สลิปของรอบเก่าจึงสั่งอาหารเข้าบิลใหม่ไม่ได้
+ * รหัส 6 หลักพิมพ์ไว้ด้วย เผื่อกล้องมือถือลูกค้าสแกนไม่ติด
+ */
+export function TableSlip({ visit, tableNumber, onClose }) {
+  const url = `${window.location.origin}/v/${visit.session_token}`
+
+  return (
+    <div className="sheet" onClick={onClose}>
+      <div className="sheet__box" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet__hd between no-print">
+          <h3 className="t-title">เปิดโต๊ะ {tableNumber} แล้ว</h3>
+          <button className="btn btn--quiet btn--icon btn--sm" onClick={onClose}>
+            <Icon name="close" size={17} />
+          </button>
+        </div>
+
+        <div className="sheet__bd">
+          <div className="slip" style={{ textAlign: 'center' }}>
+            <p className="bold">SHABU MOOD</p>
+            <p className="t-xs" style={{ marginTop: 2 }}>ใบรับประทาน</p>
+
+            <p className="num" style={{ fontSize: 44, lineHeight: 1.2, margin: '8px 0 0' }}>
+              {tableNumber}
+            </p>
+            <p className="t-sm">
+              {visit.package_name_snapshot} · {visit.adult_count + visit.child_count} ท่าน
+            </p>
+
+            <div className="slip__r" />
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <QR value={url} size={182} />
+            </div>
+            <p className="t-xs" style={{ marginTop: 8, lineHeight: 1.7 }}>
+              สแกนเพื่อสั่งอาหารจากมือถือของคุณ
+            </p>
+
+            <div className="slip__r" />
+            <div className="between">
+              <span className="t-sm">รหัสเข้าโต๊ะ</span>
+              <span className="num bold" style={{ fontSize: 20, letterSpacing: '.14em' }}>
+                {visit.access_code ?? '—'}
+              </span>
+            </div>
+            <p className="t-xs" style={{ marginTop: 6 }}>ใช้เมื่อสแกน QR ไม่ติด</p>
+          </div>
+        </div>
+
+        <div className="sheet__ft no-print">
+          <button className="btn btn--default" onClick={onClose}>ปิด</button>
+          <button className="btn btn--primary grow" onClick={() => window.print()}>
+            <Icon name="printer" size={16} /> พิมพ์ใบรับประทาน
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** จอรอระหว่าง probeSchema() + loadReference() — กันไม่ให้ดูเหมือน "ไม่มีข้อมูล" */
+export function Loading({ label = 'กำลังเชื่อมต่อฐานข้อมูล…' }) {
+  return (
+    <div className="empty" style={{ paddingTop: 90 }}>
+      <div className="empty__ico" style={{ animation: 'spin 1.1s linear infinite' }}>
+        <Icon name="refresh" size={22} />
+      </div>
+      <p className="t-sm muted">{label}</p>
+    </div>
+  )
+}
+
 export function Empty({ icon = 'tray', title, hint }) {
   return (
     <div className="empty">
@@ -93,7 +204,7 @@ export function Kv({ label, value, mono = true }) {
 export function Photo({ src, alt = '', className = '', style }) {
   const [failed, setFailed] = useState(false)
   if (failed || !src) {
-    return <div className={className} style={{ background: 'var(--n200)', ...style }} aria-hidden="true" />
+    return <div className={className} style={{ background: 'var(--s3)', ...style }} aria-hidden="true" />
   }
   return (
     <img src={src} alt={alt} loading="lazy" decoding="async"

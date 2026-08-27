@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node migrate.test.mjs && node rules.test.mjs"
+    "test": "node migrate.test.mjs && node rules.test.mjs && node scenarios.test.mjs && node queue.test.mjs",
+    "test:concurrency": "node concurrency.test.mjs"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.0"
+    "@electric-sql/pglite": "^0.3.0",
+    "pg": "^8.13.0"
   }
 }

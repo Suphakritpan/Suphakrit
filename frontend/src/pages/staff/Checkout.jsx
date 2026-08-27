@@ -88,17 +88,24 @@ function BillPanel({ visit, store, onBack }) {
 
   const points = s.points_enabled && phone ? Math.floor(bill.total / 100 / s.points_baht_per_point) : 0
 
-  function pay() {
+  async function pay() {
     setBusy(true); setResult(null)
-    setTimeout(() => {
+
+    if (method === 'card' && cardResult !== 'approved') {
       setBusy(false)
-      if (method === 'card' && cardResult !== 'approved') {
-        setResult({ ok: false, text: cardResult === 'declined' ? 'บัตรถูกปฏิเสธ (do_not_honor)' : 'เชื่อมต่อเครื่องรูดบัตรไม่ได้' })
-        return
-      }
-      store.dispatch({ type: 'PAY_VISIT', visitId: visit.id, method, amount: due })
-      setResult({ ok: true, text: 'ชำระเงินสำเร็จ ออกใบเสร็จแล้ว' })
-    }, 850)
+      setResult({ ok: false, text: cardResult === 'declined' ? 'บัตรถูกปฏิเสธ (do_not_honor)' : 'เชื่อมต่อเครื่องรูดบัตรไม่ได้' })
+      return
+    }
+
+    // ต้องรอผลจริงจากฐานข้อมูล — ของเดิมขึ้น "สำเร็จ" หลังหน่วง 850ms
+    // โดยไม่สนว่า RPC ผ่านหรือไม่ ทำให้พนักงานเห็นว่าเก็บเงินแล้วทั้งที่ยังไม่ได้เก็บ
+    const ok = await store.dispatch({
+      type: 'PAY_VISIT', visitId: visit.id, method, amount: due, tendered: tenderedSatang || undefined,
+    })
+    setBusy(false)
+    setResult(ok
+      ? { ok: true, text: 'ชำระเงินสำเร็จ ออกใบเสร็จแล้ว' }
+      : { ok: false, text: 'รับชำระไม่สำเร็จ — ดูข้อความแจ้งเตือนด้านล่างจอ ยอดยังไม่ถูกตัด' })
   }
 
   return (

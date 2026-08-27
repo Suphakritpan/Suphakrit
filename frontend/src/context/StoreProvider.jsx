@@ -212,8 +212,14 @@ export function StoreProvider({ children }) {
   // ── ตัวตน ─────────────────────────────────────────────────────────────────
   // session = ทั้งพนักงานที่ล็อกอิน และลูกค้าที่ได้ anonymous session จากการสแกน QR
   const [session, setSession] = useState(null)
-  const [profile, setProfile] = useState(null)
+  // undefined = ยังไม่รู้ · null = มี session แต่ไม่ใช่พนักงาน (ลูกค้า anonymous)
+  // แยกสองค่านี้ให้ขาด ไม่งั้นหน้าคอนโซลจะกระพริบเป็นหน้าล็อกอินทุกครั้งที่รีเฟรช
+  const [profile, setProfile] = useState(undefined)
   const [joinedVisitId, setJoinedVisitId] = useState(null)
+  // initial state ถูก seed ด้วย demo.* ไว้ให้โหมด demo ใช้
+  // พอสลับเป็น live ข้อมูลชุดนั้นยังค้างอยู่จนกว่า HYDRATE รอบแรกจะมาถึง
+  // ระหว่างนั้น visit เป็นของ demo แต่ packages/menu เป็นของจริง = จับคู่กันไม่ได้ แล้วพัง
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
     api.currentSession().then(setSession)
@@ -223,7 +229,10 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!session) { setProfile(null); return }
     let alive = true
-    api.currentProfile().then((p) => { if (alive) setProfile(p) }).catch(() => {})
+    setProfile(undefined)
+    api.currentProfile()
+      .then((p) => { if (alive) setProfile(p ?? null) })
+      .catch(() => { if (alive) setProfile(null) })
     return () => { alive = false }
   }, [session])
 
@@ -240,6 +249,19 @@ export function StoreProvider({ children }) {
         return
       }
 
+      // 0009 สั่ง `revoke all on all tables from anon` — ไม่มี session = อ่านอะไรไม่ได้เลย
+      // ต้องมี session ก่อนโหลดข้อมูลอ้างอิง ไม่ใช่รอตอนลูกค้าสแกน QR
+      // พนักงานที่ล็อกอินอยู่แล้วไม่กระทบ signInAnonymously คืน session เดิมให้
+      try {
+        await api.signInAnonymously()
+      } catch (e) {
+        if (!alive) return
+        setMode('demo')
+        setConn({ status: 'demo', reason: e.message })
+        return
+      }
+      if (!alive) return
+
       try {
         const ref = await loadReference()
         if (!alive) return
@@ -255,6 +277,24 @@ export function StoreProvider({ children }) {
     return () => { alive = false }
   }, [])
 
+  // ── ตัวตนเปลี่ยน = สิทธิ์เปลี่ยน ต้องโหลดข้อมูลอ้างอิงใหม่ ────────────────
+  //
+  // loadReference() รอบแรกวิ่งตอนยังเป็นลูกค้า anonymous ซึ่ง RLS ให้เห็น
+  // 0 โต๊ะ 0 โซน และอ่าน restaurant_settings ไม่ได้ (policy read_tables /
+  // read_zones / staff_read_settings ต้องการ is_staff())
+  // ถ้าไม่โหลดซ้ำหลังพนักงานล็อกอิน คอนโซลจะขึ้น "0 โต๊ะ" ทั้งที่ร้านมี 12 โต๊ะ
+  // ลูกค้าก็เจอแบบเดียวกัน: policy read_tables ให้เห็นเฉพาะโต๊ะของ visit ตัวเอง
+  // ตอน loadReference() รอบแรกยังไม่ได้ join จึงได้ 0 โต๊ะ แล้วหน้า /order พัง
+  const staffId = profile?.id ?? null
+  useEffect(() => {
+    if (mode !== 'live' || (!staffId && !joinedVisitId)) return
+    let alive = true
+    loadReference()
+      .then((ref) => { if (alive) setReference(ref) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [mode, staffId, joinedVisitId])
+
   // ── โหลดสถานะหน้าร้าน + ติดตาม realtime ───────────────────────────────────
   const refresh = useCallback(async () => {
     if (refreshing.current) return
@@ -262,6 +302,7 @@ export function StoreProvider({ children }) {
     try {
       const floor = await loadFloorState()
       rawDispatch({ type: 'HYDRATE', data: floor })
+      setHydrated(true)
     } catch (e) {
       setConn({ status: 'error', reason: e.message })
     } finally {
@@ -289,7 +330,7 @@ export function StoreProvider({ children }) {
   // ── dispatch เดียวใช้ได้ทั้งสองโหมด ───────────────────────────────────────
   // หน้าจอเรียก dispatch เหมือนเดิมทุกที่ ไม่ต้องรู้ว่าอยู่โหมดไหน
   const dispatch = useCallback(async (action) => {
-    if (mode !== 'live') return rawDispatch(action)
+    if (mode !== 'live') { rawDispatch(action); return true }
 
     const fail = (e) =>
       rawDispatch({ type: 'TOAST', toast: { kind: 'info', text: e.message } })
@@ -323,6 +364,16 @@ export function StoreProvider({ children }) {
           await api.resolveRequest(action.id)
           break
 
+        case 'CALL_QUEUE':
+          await api.callQueueTicket(action.id)
+          rawDispatch({ type: 'TOAST', toast: { kind: 'ok', text: 'เรียกคิวแล้ว' } })
+          break
+
+        case 'CANCEL_QUEUE':
+          await api.cancelQueueTicket(action.id, action.noShow ?? false)
+          rawDispatch({ type: 'TOAST', toast: { kind: 'ok', text: 'ยกเลิกคิวแล้ว' } })
+          break
+
         case 'SEAT_TABLE': {
           const addon = (reference?.addOns ?? [])[0]
           const guests = action.adults + action.children
@@ -340,9 +391,18 @@ export function StoreProvider({ children }) {
         }
 
         case 'PAY_VISIT': {
+          // ฐานข้อมูลบังคับลำดับ: open -> awaiting_payment -> paid
+          // create_payment() ปฏิเสธถ้ายังเป็น open ("ต้องกดเช็คบิลก่อน")
+          // หน้าจอเดิมข้ามขั้นนี้ จ่ายเงินจึงล้มเหลวทุกครั้งแบบเงียบ ๆ
+          const v = state.visits.find((x) => x.id === action.visitId)
+          if (v && v.status === 'open') await api.requestBill(action.visitId)
+
+          // ยอดที่เชื่อได้คือของฐานข้อมูล ไม่ใช่ previewBill ฝั่งหน้าจอ
+          // (previewBill มีไว้ "แสดง" ระหว่างกินเท่านั้น ตามที่ money.js เขียนไว้)
+          const due = await api.amountDue(action.visitId)
           const p = await api.createPayment({
             visitId: action.visitId, method: action.method,
-            amountSatang: action.amount, tenderedSatang: action.tendered,
+            amountSatang: due, tenderedSatang: action.tendered,
           })
           await api.confirmPayment(p.id)
           rawDispatch({ type: 'TOAST', toast: { kind: 'ok', text: 'ชำระเงินสำเร็จ — ออกใบเสร็จแล้ว' } })
@@ -371,21 +431,49 @@ export function StoreProvider({ children }) {
 
         case 'TOAST':
           rawDispatch(action)
-          return
+          return true
 
         default:
           rawDispatch(action)
-          return
+          return true
       }
       refresh()
+      return true
     } catch (e) {
       fail(e)
+      return false
     }
   }, [mode, state.orders, state.visits, state.menuItems, reference, refresh])
 
   // ── ลูกค้าสแกน QR จากสลิป → /v/:token ───────────────────────────────────
   // join_visit ผูก anonymous session เข้ากับ visit ที่ token ชี้ไว้
   // ถ้า token ตาย (ปิดบิลแล้ว) ฟังก์ชันฝั่งฐานข้อมูลจะโยน error ภาษาไทยกลับมาเอง
+  // เปิดโต๊ะแล้วต้องได้ session_token กลับมาทำ QR บนสลิป
+  // dispatch คืนแค่ true/false จึงใช้ไม่ได้กับงานที่ต้องการข้อมูลกลับ
+  const seatTable = useCallback(async ({ tableId, packageId, adults, children, refill, queueId }) => {
+    const addon = (reference?.addOns ?? [])[0]
+    const guests = adults + children
+    const visit = await api.openVisit({
+      tableId, packageId, adults, children,
+      addons: refill && addon ? [{ add_on_id: addon.id, quantity: guests }] : [],
+      queueTicketId: queueId,
+    })
+    await refresh()
+    return visit
+  }, [reference, refresh])
+
+  const adjustGuests = useCallback(async (visitId, adults, children) => {
+    const v = await api.adjustVisitGuests(visitId, adults, children)
+    await refresh()
+    return v
+  }, [refresh])
+
+  const issueQueue = useCallback(async (input) => {
+    const ticket = await api.issueQueueTicket(input)
+    await refresh()
+    return ticket
+  }, [refresh])
+
   const joinByToken = useCallback(async (token) => {
     const visit = await api.joinVisit({ sessionToken: token })
     setJoinedVisitId(visit.id)
@@ -405,17 +493,23 @@ export function StoreProvider({ children }) {
     const categories = live ? reference.categories : demo.categories
     const stations = live ? reference.stations : demo.stations
 
-    const ordersOf = (visitId) => state.orders.filter((o) => o.visit_id === visitId)
-    const visitOf = (visitId) => state.visits.find((v) => v.id === visitId)
+    const pending = live && !hydrated
+    const visits          = pending ? [] : state.visits
+    const orders          = pending ? [] : state.orders
+    const serviceRequests = pending ? [] : state.serviceRequests
+    const queueTickets    = pending ? [] : state.queueTickets
+
+    const ordersOf = (visitId) => orders.filter((o) => o.visit_id === visitId)
+    const visitOf = (visitId) => visits.find((v) => v.id === visitId)
     const tableOf = (tableId) => tables.find((t) => t.id === tableId)
 
     // รอบที่ยังไม่ปิด — กฎเดียวกับ RLS และ RPC ฝั่งฐานข้อมูล อยู่ที่นี่ที่เดียว
-    const activeVisits = () => state.visits.filter((v) => ACTIVE_VISIT.includes(v.status))
+    const activeVisits = () => visits.filter((v) => ACTIVE_VISIT.includes(v.status))
     const activeVisitOf = (tableId) =>
-      state.visits.find((v) => v.table_id === tableId && ACTIVE_VISIT.includes(v.status))
+      visits.find((v) => v.table_id === tableId && ACTIVE_VISIT.includes(v.status))
 
     const kitchenTickets = () =>
-      state.orders
+      orders
         .map((o) => {
           const visit = visitOf(o.visit_id)
           const table = visit && tableOf(visit.table_id)
@@ -426,14 +520,14 @@ export function StoreProvider({ children }) {
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
 
     const readyToServe = () =>
-      state.orders.flatMap((o) => {
+      orders.flatMap((o) => {
         const visit = visitOf(o.visit_id)
         const table = visit && tableOf(visit.table_id)
         return o.items.filter((i) => i.status === 'ready').map((i) => ({ ...i, order: o, table, visit }))
       })
 
     const openRequests = () =>
-      state.serviceRequests.filter((r) => r.status === 'open')
+      serviceRequests.filter((r) => r.status === 'open')
         .map((r) => ({ ...r, table: tableOf(r.table_id) }))
 
     const extraItemsOf = (visitId) => {
@@ -449,10 +543,11 @@ export function StoreProvider({ children }) {
 
     // ฝั่งลูกค้า: ของจริงมาจาก /v/:token — ในเดโมหยิบโต๊ะที่เปิดอยู่ใบแรกมาแสดง
     const customerVisitId = joinedVisitId
-      ?? (live ? (state.visits.find((v) => v.status === 'open')?.id ?? null) : demo.CUSTOMER_VISIT_ID)
+      ?? (live ? (visits.find((v) => v.status === 'open')?.id ?? null) : demo.CUSTOMER_VISIT_ID)
 
     return {
       ...state,
+      visits, orders, serviceRequests, queueTickets,
       mode, conn,
       tables, menuItems, settings, packages, addOns, categories, stations,
       dashboard: live ? dash : demo.dashboard,
@@ -463,9 +558,9 @@ export function StoreProvider({ children }) {
       refresh, dispatch,
       signInStaff: api.signInStaff,
       signOut: api.signOut,
-      joinByToken,
+      joinByToken, issueQueue, seatTable, adjustGuests,
     }
-  }, [state, mode, conn, reference, dash, refresh, dispatch, session, profile, joinedVisitId, joinByToken])
+  }, [state, mode, conn, reference, dash, refresh, dispatch, session, profile, joinedVisitId, joinByToken, issueQueue, seatTable, adjustGuests, hydrated])
 
   return <StoreCtx.Provider value={api_}>{children}</StoreCtx.Provider>
 }

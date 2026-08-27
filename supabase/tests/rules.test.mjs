@@ -6,7 +6,9 @@ const BASE = path.resolve(import.meta.dirname, '..')
 const FILES = [
   '0001_extensions_enums', '0002_core_config', '0003_menu_packages', '0004_floor_queue',
   '0005_visits', '0006_orders', '0007_billing_payments', '0008_functions_rpc',
-  '0009_rls_realtime', '0010_token_fallback',
+  '0009_rls_realtime', '0010_token_fallback', '0011_queue_tickets',
+  '0012_scope_staff_rls_by_branch', '0013_align_remote_grants',
+  '0014_queue_dashboard_and_guest_adjust',
 ].map(f => `migrations/${f}.sql`).concat('seed.sql')
 
 const sanitize = (s) => s
@@ -187,6 +189,200 @@ await shouldPass('เก็บโต๊ะเสร็จ (cleaning → availabl
 console.log('\n── Audit log ──')
 const audits = await q(`select action from audit_logs order by id`)
 ok('บันทึก audit ครบ', audits.map(a => a.action).join(', '))
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// P0 — กลุ่มที่พังแล้วไม่ใช่แค่ UI ผิด แต่ออเดอร์ซ้ำ เงินผิด บิลผิด ข้ามสาขา
+// ════════════════════════════════════════════════════════════════════════════
+
+/** เปิดโต๊ะใหม่บนโต๊ะว่างใบถัดไป — แต่ละเทสต์ต้องมี visit ของตัวเอง ไม่ใช้ร่วมกัน */
+async function freshVisit(pkg = stdPkg, adults = 2) {
+  await be(staffUid)
+  const [t] = await q(`select * from tables where status='available' order by table_number limit 1`)
+  const [v] = await q(`select * from open_visit($1,$2,$3,0)`, [t.id, pkg.id, adults])
+  return { visit: v, table: t }
+}
+
+console.log('\n── P0-1 QR / session isolation ──')
+{
+  const a = await freshVisit()
+  const b = await freshVisit()
+
+  const [{ id: uidA }] = await q(`insert into auth.users(email) values ('a@x.local') returning id`)
+  await be(uidA)
+  await q(`select * from join_visit($1::uuid, null, null, 'device A', null)`, [a.visit.session_token])
+
+  await shouldFail('ลูกค้าโต๊ะ A สั่งอาหารเข้าบิลโต๊ะ B', '', () =>
+    q(`select * from place_order($1, $2::jsonb)`, [b.visit.id, JSON.stringify([{ menu_item_id: pork.id, quantity: 1 }])]))
+
+  await shouldFail('ลูกค้าโต๊ะ A ขอเช็คบิลให้โต๊ะ B', '', () =>
+    q(`select * from request_visit_bill($1)`, [b.visit.id]))
+
+  const seen = await q(`select current_visit_id() as v`)
+  if (seen[0].v === a.visit.id) ok('current_visit_id() ผูกกับโต๊ะตัวเองเท่านั้น')
+  else bad('current_visit_id()', `ได้ ${seen[0].v} คาด ${a.visit.id}`)
+
+  const [{ id: uidA2 }] = await q(`insert into auth.users(email) values ('a2@x.local') returning id`)
+  await be(uidA2)
+  await shouldPass('เครื่องที่สองของโต๊ะเดียวกัน join ได้', () =>
+    q(`select * from join_visit($1::uuid, null, null, 'device A2', null)`, [a.visit.session_token]))
+}
+
+console.log('\n── P0-2 boundary เวลา last order ──')
+{
+  const { visit: v } = await freshVisit()
+  const [cfg] = await q(
+    `select last_order_minutes_before_end lo, default_dining_minutes dm from restaurant_settings where branch_id=$1`,
+    [branch])
+  ok('ค่าตั้งต้นเวลา', `นั่ง ${cfg.dm} นาที · ปิดรับออเดอร์ก่อนหมด ${cfg.lo} นาที`)
+
+  const [{ id: cust }] = await q(`insert into auth.users(email) values ('b1@x.local') returning id`)
+  await be(cust)
+  await q(`select * from join_visit($1::uuid)`, [v.session_token])
+  await be(staffUid)
+  await q(`update restaurant_settings set min_seconds_between_orders = 0 where branch_id=$1`, [branch])
+  await be(cust)
+
+  // ตั้งให้เลยเส้นไป 1 วินาที ไม่ใช่ "ตรงเส้นพอดี"
+  // เพราะตรงเส้นพอดีผลขึ้นกับเศษวินาทีระหว่างที่ตั้งค่ากับที่ place_order อ่าน now()
+  // เทสต์ที่แกว่งตามนาฬิกาเชื่อถือไม่ได้ ต้องทดสอบให้ขาดทั้งสองฝั่ง
+  await q(
+    `update visits set dining_deadline_at = now() + make_interval(mins => $2) - interval '1 second'
+      where id=$1`, [v.id, cfg.lo])
+  await shouldFail(`เลยเส้นปิดรับออเดอร์ไป 1 วินาที`, 'หมดเวลาสั่งอาหาร', () =>
+    q(`select * from place_order($1,$2::jsonb)`, [v.id, JSON.stringify([{ menu_item_id: pork.id, quantity: 1 }])]))
+
+  await q(`update visits set dining_deadline_at = now() + make_interval(mins => $2) where id=$1`, [v.id, cfg.lo + 1])
+  await shouldPass(`ก่อนเส้นปิดรับออเดอร์ 1 นาที`, () =>
+    q(`select * from place_order($1,$2::jsonb)`, [v.id, JSON.stringify([{ menu_item_id: pork.id, quantity: 1 }])]))
+}
+
+console.log('\n── P0-3 สั่งซ้ำจาก retry ──')
+{
+  const { visit: v } = await freshVisit()
+  const [{ id: cust }] = await q(`insert into auth.users(email) values ('c1@x.local') returning id`)
+  await be(cust)
+  await q(`select * from join_visit($1::uuid)`, [v.session_token])
+  await be(staffUid)
+  await q(`update restaurant_settings set min_seconds_between_orders = 30 where branch_id=$1`, [branch])
+  await be(cust)
+
+  const payload = JSON.stringify([{ menu_item_id: pork.id, quantity: 2 }])
+  await shouldPass('ส่งออเดอร์ครั้งแรก', () => q(`select * from place_order($1,$2::jsonb)`, [v.id, payload]))
+  await shouldFail('ยิงซ้ำทันทีเพราะ network retry', 'สั่งถี่เกินไป', () =>
+    q(`select * from place_order($1,$2::jsonb)`, [v.id, payload]))
+
+  const [{ n }] = await q(`select count(*)::int n from orders where visit_id=$1`, [v.id])
+  if (n === 1) ok('มีออเดอร์ใบเดียว ไม่ซ้ำ')
+  else bad('กันออเดอร์ซ้ำ', `มี ${n} ใบ`)
+  ok('ข้อจำกัดที่ต้องรู้', 'กันด้วย min_seconds_between_orders ไม่ใช่ idempotency key — retry หลัง 30 วิ ยังซ้ำได้')
+}
+
+console.log('\n── P0-4 payment overpay / จ่ายผิดสถานะ ──')
+{
+  const { visit: v } = await freshVisit()
+  await be(staffUid)
+  await shouldFail('จ่ายเงินตั้งแต่ยังไม่เช็คบิล', 'ต้องกดเช็คบิลก่อน', () =>
+    q(`select * from create_payment($1,'cash',10000)`, [v.id]))
+
+  const [b] = await q(`select * from request_visit_bill($1)`, [v.id])
+  await shouldFail('จ่ายเกินยอดบิล 1 สตางค์', 'เกินยอดคงเหลือ', () =>
+    q(`select * from create_payment($1,'cash',$2)`, [v.id, b.total_satang + 1]))
+  await shouldFail('จ่ายยอดติดลบ', '', () =>
+    q(`select * from create_payment($1,'cash',-100)`, [v.id]))
+}
+
+console.log('\n── P0-5 ยกเลิกการชำระเงิน ก่อน/หลัง confirm ──')
+{
+  const { visit: v } = await freshVisit()
+  await be(staffUid)
+  const [b] = await q(`select * from request_visit_bill($1)`, [v.id])
+
+  const [pA] = await q(`select * from create_payment($1,'card',$2)`, [v.id, b.total_satang])
+  await shouldPass('ยกเลิกก่อน confirm ได้', () => q(`select * from cancel_payment($1,'ลูกค้าเปลี่ยนใจ')`, [pA.id]))
+  const [{ due: dueAfterCancel }] = await q(`select visit_amount_due($1) as due`, [v.id])
+  if (dueAfterCancel === b.total_satang) ok('ยกเลิกแล้วยอดคงเหลือกลับมาเต็ม', `${dueAfterCancel / 100}฿`)
+  else bad('ยอดหลังยกเลิก', `ได้ ${dueAfterCancel} คาด ${b.total_satang}`)
+
+  const [pB] = await q(`select * from create_payment($1,'cash',$2)`, [v.id, b.total_satang])
+  await q(`select * from confirm_payment($1)`, [pB.id])
+  await shouldFail('ยกเลิกหลัง confirm แล้ว', '', () => q(`select * from cancel_payment($1,'กดผิด')`, [pB.id]))
+}
+
+console.log('\n── P0-6 snapshot ราคาแพ็กเกจ ──')
+{
+  const { visit: v } = await freshVisit(stdPkg, 2)
+  const priceAtOpen = v.package_price_adult_satang
+
+  await be(staffUid)
+  await q(`update buffet_packages set price_per_adult_satang = price_per_adult_satang + 5000 where id=$1`, [stdPkg.id])
+  await q(`select * from request_visit_bill($1)`, [v.id])
+  const expectBuffet = 2 * priceAtOpen
+
+  const [line] = await q(`select amount_satang from bill_lines where visit_id=$1 and kind='buffet_adult'`, [v.id])
+  if (line && line.amount_satang === expectBuffet)
+    ok('ขึ้นราคาแล้วบิลเก่ายังใช้ราคาตอนเปิดโต๊ะ', `${expectBuffet / 100}฿ · ราคาใหม่ ${(priceAtOpen + 5000) / 100}฿ ไม่กระทบ`)
+  else bad('snapshot ราคา', `bill_line=${line ? line.amount_satang : 'ไม่มี'} คาด ${expectBuffet}`)
+  await q(`update buffet_packages set price_per_adult_satang = $2 where id=$1`, [stdPkg.id, priceAtOpen])
+}
+
+console.log('\n── boundary: เวลานั่งตามแพ็กเกจ ──')
+{
+  const a = await freshVisit(stdPkg, 2)
+  const b = await freshVisit(prmPkg, 2)
+  const mins = (v) => Math.round((new Date(v.dining_deadline_at) - new Date(v.check_in_at)) / 60000)
+  const gotA = mins(a.visit), gotB = mins(b.visit)
+  if (gotA === stdPkg.dining_minutes && gotB === prmPkg.dining_minutes)
+    ok('เวลานั่งมาจากแพ็กเกจ ไม่ใช่ค่าคงที่', `${stdPkg.name} ${gotA} นาที · ${prmPkg.name} ${gotB} นาที`)
+  else bad('เวลานั่งตามแพ็กเกจ', `ได้ ${gotA}/${gotB} คาด ${stdPkg.dining_minutes}/${prmPkg.dining_minutes}`)
+}
+
+console.log('\n── boundary: ส่วนลดต้องไม่ทำให้ยอดติดลบ ──')
+{
+  const { visit: v } = await freshVisit()
+  await be(staffUid)
+  const [{ id: promo }] = await q(`select id from promotions where code='LUNCH10'`)
+  const [b0] = await q(`select * from request_visit_bill($1)`, [v.id])
+
+  await q(
+    `insert into visit_promotions (visit_id, promotion_id, name_snapshot, discount_satang)
+     values ($1,$2,'ทดสอบส่วนลดเกินยอด',$3)`,
+    [v.id, promo, b0.subtotal_satang + 999999])
+  const [b1] = await q(`select * from request_visit_bill($1)`, [v.id])
+  if (b1.total_satang >= 0) ok('ส่วนลดเกินยอด → ยอดสุทธิไม่ติดลบ', `${b1.total_satang / 100}฿`)
+  else bad('ยอดติดลบ', `${b1.total_satang}`)
+}
+
+console.log('\n── P0-7 แยกข้อมูลข้ามสาขา ──')
+{
+  // PGlite รันเป็น superuser → RLS ไม่ถูกบังคับ การนับแถวจึงไม่ใช่หลักฐาน
+  // ตรวจที่ "ตัว policy" แทน ว่ามีเงื่อนไขสาขาอยู่ในนิพจน์หรือไม่ ซึ่งอ่านได้ตรง ๆ
+  // และเป็นความจริงเดียวกันไม่ว่าจะรันด้วยสิทธิ์ใด
+  const BRANCH_SCOPED = ['visits', 'orders', 'queue_tickets', 'payments', 'tables']
+  const pols = await q(
+    `select tablename, policyname, coalesce(qual, '') qual
+       from pg_policies
+      where schemaname='public' and tablename = any($1)`, [BRANCH_SCOPED])
+
+  const leaky = pols.filter((p) =>
+    p.qual.includes('is_staff()') && !/branch/i.test(p.qual))
+
+  if (leaky.length === 0) {
+    ok('policy ของตารางข้ามสาขามีเงื่อนไขสาขาครบ')
+  } else {
+    bad('แยกข้อมูลข้ามสาขา',
+        `${leaky.length} policy ให้สิทธิ์ด้วย is_staff() ล้วนโดยไม่เช็คสาขา — ` +
+        `พนักงานสาขาใดก็อ่านข้อมูลทุกสาขาได้: ` +
+        leaky.map((p) => `${p.tablename}.${p.policyname}`).join(', ') +
+        ` · current_staff_branch() มีอยู่แล้วแต่ไม่ถูกใช้ใน policy เลย`)
+  }
+
+  // ยืนยันซ้ำที่ระดับฟังก์ชัน: is_staff() ไม่รับ/ไม่เทียบสาขา
+  const [{ src }] = await q(
+    `select prosrc src from pg_proc where proname='is_staff'`)
+  if (/branch/i.test(src)) ok('is_staff() พิจารณาสาขา')
+  else ok('ยืนยันสาเหตุ', 'is_staff() เช็คแค่ว่ามีแถวใน profiles และ is_active — ไม่มีสาขาในเงื่อนไข')
+}
 
 console.log(`\n${'─'.repeat(60)}\nผ่าน ${pass} · ไม่ผ่าน ${fail}`)
 process.exit(fail ? 1 : 0)

@@ -15,6 +15,10 @@ const FILES = [
   'migrations/0008_functions_rpc.sql',
   'migrations/0009_rls_realtime.sql',
   'migrations/0010_token_fallback.sql',
+  'migrations/0011_queue_tickets.sql',
+  'migrations/0012_scope_staff_rls_by_branch.sql',
+  'migrations/0013_align_remote_grants.sql',
+  'migrations/0014_queue_dashboard_and_guest_adjust.sql',
   'seed.sql',
 ]
 

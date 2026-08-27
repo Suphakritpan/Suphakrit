@@ -66,6 +66,35 @@ export async function currentProfile() {
   return data ?? null
 }
 
+// ── คิวหน้าร้าน ─────────────────────────────────────────────────────────────
+
+/** ออกบัตรคิวใบใหม่ — เลขคิวรันรายวัน ฐานข้อมูลเป็นคนออกให้ ไม่ใช่หน้าจอ */
+export async function issueQueueTicket({ partySize, adults, children, customerName, phone, notes }) {
+  return unwrap(await supabase.rpc('issue_queue_ticket', {
+    p_party_size: partySize ?? (adults ?? 0) + (children ?? 0),
+    p_customer_name: customerName ?? null,
+    p_phone: phone ?? null,
+    p_notes: notes ?? null,
+    p_adult_count: adults ?? null,
+    p_child_count: children ?? 0,
+  }))
+}
+
+/** แก้จำนวนคนหลังเปิดโต๊ะ — เพื่อนมาเพิ่ม หรือเปิดผิดตั้งแต่แรก */
+export async function adjustVisitGuests(visitId, adults, children = 0) {
+  return unwrap(await supabase.rpc('adjust_visit_guests', {
+    p_visit_id: visitId, p_adults: adults, p_children: children,
+  }))
+}
+
+export async function callQueueTicket(id) {
+  return unwrap(await supabase.rpc('call_queue_ticket', { p_id: id }))
+}
+
+export async function cancelQueueTicket(id, noShow = false) {
+  return unwrap(await supabase.rpc('cancel_queue_ticket', { p_id: id, p_no_show: noShow }))
+}
+
 // ── ฝั่งลูกค้า ──────────────────────────────────────────────────────────────
 
 /** เข้าโต๊ะด้วย QR จากสลิป หรือ QR ติดโต๊ะ + รหัส 6 หลัก */

@@ -192,3 +192,16 @@ function startOfTodayISO(tz) {
   const offset = now.getTime() - new Date(now.toLocaleString('en-US', { timeZone: tz })).getTime()
   return new Date(local.getTime() + offset).toISOString()
 }
+
+/**
+ * เช็คคิวด้วย token จาก QR บนบัตร — ไม่ต้องมี session
+ *
+ * คนยืนรอหน้าร้านยังไม่ได้เป็นลูกค้าของโต๊ะไหน จึงไม่ควรบังคับให้ล็อกอิน
+ * get_queue_status() เป็น security definer ที่ตรวจ token เอง (0011)
+ */
+export async function queueStatusByToken(token) {
+  if (!isConfigured) throw new Error('ยังไม่ได้ตั้งค่า Supabase')
+  const { data, error } = await supabase.rpc('get_queue_status', { p_token: token })
+  if (error) throw new Error(error.message)
+  return data
+}

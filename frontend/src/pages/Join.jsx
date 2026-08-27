@@ -41,7 +41,7 @@ export default function Join() {
           </p>
         </>
       ) : (
-        <div className="row g12" style={{ justifyContent: 'center', color: 'var(--n500)' }}>
+        <div className="row g12" style={{ justifyContent: 'center', color: 'var(--n300)' }}>
           <Icon name="refresh" size={19} />
           <span className="t-sm">กำลังเปิดโต๊ะของคุณ…</span>
         </div>
