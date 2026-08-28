@@ -15,7 +15,7 @@ const FILES = [
   '0005_visits', '0006_orders', '0007_billing_payments', '0008_functions_rpc',
   '0009_rls_realtime', '0010_token_fallback', '0011_queue_tickets',
   '0012_scope_staff_rls_by_branch', '0013_align_remote_grants',
-  '0014_queue_dashboard_and_guest_adjust',
+  '0014_queue_dashboard_and_guest_adjust', '0015_fix_guest_adjust_audit', '0016_ops_gaps', '0017_qr_code_attempts',
 ].map((f) => `migrations/${f}.sql`).concat('seed.sql')
 
 const sanitize = (s) => s

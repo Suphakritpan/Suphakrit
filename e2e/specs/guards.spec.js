@@ -30,12 +30,16 @@ let mode = null   // 'live' | 'demo' — ตรวจครั้งเดีย
  */
 async function asStranger(page, url) {
   if (mode === null) {
+    // ไม่ล้าง storage แล้ว — ทุก context เริ่มจาก session ผู้เยี่ยมชมที่ global-setup เตรียมไว้
+    // ซึ่งเป็น "ไม่ใช่พนักงาน" อยู่แล้ว ส่วนการล้างทิ้งทำให้ต้องสมัคร anonymous ใหม่ทุกครั้ง
     await page.goto('/')
-    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
-    await page.reload()
-    await expect(page.getByText('เชื่อม Supabase').or(page.getByText('ข้อมูลจำลอง')).first())
-      .toBeVisible({ timeout: 30_000 })
-    mode = (await page.getByText('ข้อมูลจำลอง').count()) > 0 ? 'demo' : 'live'
+    // ต้องอ่านจากป้ายสถานะเท่านั้น ไม่ใช่ getByText ทั้งหน้า
+    // ข้อความบรรยายบนหน้าแรกมีคำว่า "ข้อมูลจำลอง" อยู่ด้วย เทสต์ชุดนี้จึงเคยสรุปว่า
+    // เป็นโหมดสำรองเสมอ แล้วข้ามตัวเองทั้งชุดโดยที่ผลรันยังขึ้นเขียว
+    const badge = page.locator('.panel__hd .chip').first()
+    await expect(badge).toBeVisible({ timeout: 30_000 })
+    await expect(badge).not.toHaveText(/กำลัง(ตรวจสอบ|เชื่อมต่อ)/, { timeout: 30_000 })
+    mode = /ข้อมูลจำลอง/.test(await badge.innerText()) ? 'demo' : 'live'
   }
 
   // โหมดสำรองเปิดคอนโซลได้โดยไม่ต้องล็อกอินตามดีไซน์ ด่านของโหมด live จึงทดสอบไม่ได้

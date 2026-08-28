@@ -252,6 +252,19 @@ console.log('\n── Q8 กดรับชำระซ้ำ ต้องไม
   if (total === due) ok('เก็บเงินได้เท่ากับบิลพอดี', `${total / 100}฿`)
   else bad('ยอดที่เก็บได้', `${total} จากบิล ${due}`)
 
+  // ต้องเคลียร์ครัวก่อน — close_visit() บล็อกถ้ายังมีอาหารที่ลูกค้ายังไม่ได้รับ (0016)
+  const left = await q(
+    `select i.id, i.status from order_items i join orders o on o.id = i.order_id
+      where o.visit_id = $1 and i.status in ('pending','preparing','ready')`, [visit.id])
+  const NEXT = { pending: 'preparing', preparing: 'ready', ready: 'served' }
+  for (const it of left) {
+    let s = it.status
+    while (NEXT[s]) {
+      await q(`select * from advance_order_item($1,$2::order_status)`, [it.id, NEXT[s]])
+      s = NEXT[s]
+    }
+  }
+
   await shouldPass('ปิดรอบ', () => q(`select * from close_visit($1)`, [visit.id]))
   const [t] = await q(`select status from tables where id=$1`, [table.id])
   if (t.status === 'cleaning') ok('โต๊ะเข้าคิวทำความสะอาด ไม่ว่างทันที', 'กันคิวถัดไปถูก assign โต๊ะที่ยังไม่ได้เก็บ')

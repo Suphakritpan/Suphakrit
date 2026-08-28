@@ -96,11 +96,18 @@ const STAFF_NAV = [
 ]
 
 const ADMIN_NAV = [
-  { to: '/admin',          icon: 'chart',    label: 'ภาพรวม', end: true },
-  { to: '/admin/menu',     icon: 'menuBook', label: 'จัดการเมนู' },
-  { to: '/admin/packages', icon: 'tag',      label: 'แพ็กเกจ & Add-on' },
-  { to: '/admin/tables',   icon: 'qr',       label: 'โต๊ะ & QR' },
-  { to: '/admin/settings', icon: 'settings', label: 'ตั้งค่าร้าน' },
+  { to: '/admin',            icon: 'chart',    label: 'ภาพรวม', end: true },
+  { to: '/admin/queue',      icon: 'ticket',   label: 'คิวทั้งวัน' },
+  { to: '/admin/visits',     icon: 'grid',     label: 'รอบการใช้บริการ' },
+  { to: '/admin/bills',      icon: 'wallet',   label: 'บิล & ชำระเงิน' },
+  { to: '/admin/audit',      icon: 'lock',     label: 'ตรวจสอบย้อนหลัง' },
+  { to: '/admin/menu',       icon: 'menuBook', label: 'จัดการเมนู' },
+  { to: '/admin/packages',   icon: 'tag',      label: 'แพ็กเกจ & Add-on' },
+  { to: '/admin/promotions', icon: 'sparkle',  label: 'โปรโมชั่น' },
+  { to: '/admin/tables',     icon: 'qr',       label: 'โต๊ะ & QR' },
+  { to: '/admin/customers',  icon: 'users',    label: 'สมาชิก & แต้ม' },
+  { to: '/admin/staff',      icon: 'chefHat',  label: 'พนักงาน' },
+  { to: '/admin/settings',   icon: 'settings', label: 'ตั้งค่าร้าน' },
 ]
 
 export function ConsoleLayout({ kind }) {

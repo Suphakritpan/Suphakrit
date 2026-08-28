@@ -87,18 +87,20 @@ test.describe('คิว → โต๊ะ → บิล', () => {
     await expect(page.getByText('ใบรับประทาน', { exact: true })).toBeVisible()
     await expect(page.locator('.sheet__box img[alt="QR สำหรับสแกน"]')).toBeVisible()
 
+    // ต้องหยิบใบที่เทสต์นี้เปิดเองผ่าน queue_tickets.visit_id
+    // ฐานนี้แชร์กับหน้าจอที่เปิดค้างอยู่ — "ใบใหม่สุดของทั้งฐาน" อาจเป็นของคนอื่น
+    const [linked] = await select('queue_tickets', `select=status,visit_id&id=eq.${ticket.id}`)
+    expect(linked.status).toBe('seated')
+    expect(linked.visit_id).toBeTruthy()
+
     const [visit] = await select('visits',
       'select=id,adult_count,child_count,package_price_adult_satang,package_price_child_satang' +
-      '&order=check_in_at.desc&limit=1')
+      `&id=eq.${linked.visit_id}`)
     created.visitIds.push(visit.id)
 
     expect(visit.adult_count).toBe(2)
     expect(visit.child_count).toBe(2)
     expect(visit.package_price_child_satang).toBeLessThan(visit.package_price_adult_satang)
-
-    const [linked] = await select('queue_tickets', `select=status,visit_id&id=eq.${ticket.id}`)
-    expect(linked.status).toBe('seated')
-    expect(linked.visit_id).toBe(visit.id)
   })
 
   test('ลูกค้าสแกน QR บัตรคิวได้โดยไม่ต้องล็อกอิน และไม่เห็นข้อมูลส่วนตัว', async ({ page }) => {

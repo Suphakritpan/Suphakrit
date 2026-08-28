@@ -35,4 +35,6 @@ shabu-install.sql
 # Playwright E2E output
 e2e/test-results/
 e2e/playwright-report/
+# session ผู้เยี่ยมชมที่ global-setup สร้าง — มี token อยู่ข้างใน
+e2e/support/anon-state.json
 e2e/blob-report/

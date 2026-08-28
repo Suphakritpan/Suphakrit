@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Icon from '../components/ui/Icon'
 import { Photo, ConnectionBadge, ConnectionNote } from '../components/shared/Bits'
+import { useStore } from '../context/StoreProvider'
 
 const SIDES = [
   {
@@ -31,6 +32,8 @@ const FACTS = [
 ]
 
 export default function Landing() {
+  const { mode } = useStore()
+
   return (
     <div className="entry">
       <div className="entry__hero">
@@ -86,9 +89,14 @@ export default function Landing() {
           </div>
           <div className="panel__bd">
             <div className="between wrap g16">
+              {/* ข้อความนี้เคยเขียนตายตัวว่า "ยังใช้ข้อมูลจำลอง" ทั้งที่ต่อฐานข้อมูลจริงอยู่
+                  นอกจากจะโกหกผู้ใช้แล้ว ยังทำให้ E2E ที่ตรวจโหมดจากข้อความนี้
+                  สรุปว่าเป็นโหมดสำรองเสมอ แล้วข้ามเทสต์ด่านกั้นทั้งชุดแบบเงียบ ๆ */}
               <p className="t-sm muted" style={{ maxWidth: 480 }}>
                 ฐานข้อมูลผ่านการรันจริงบน Postgres และทดสอบกฎทางธุรกิจครบทุกข้อแล้ว
-                หน้าจอที่เห็นตอนนี้ยังใช้ข้อมูลจำลอง เพราะยังไม่ได้ push schema ขึ้น Supabase
+                {mode === 'live'
+                  ? ' หน้าจอที่เห็นตอนนี้อ่านเขียนกับ Supabase จริง ทุกฝั่งเห็นข้อมูลชุดเดียวกันข้ามเครื่อง'
+                  : ' หน้าจอที่เห็นตอนนี้ยังใช้ข้อมูลจำลอง เพราะยังต่อ Supabase ไม่ได้'}
               </p>
               <div className="row g16 wrap">
                 {FACTS.map(([n, l]) => (

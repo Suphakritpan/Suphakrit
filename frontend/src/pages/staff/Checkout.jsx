@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
-import { Chip, Empty, MockBanner, Note } from '../../components/shared/Bits'
+import { Chip, Empty, MockBanner, Note, unservedOf } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { PAYMENT_METHODS, TEST_CARDS, VISIT_STATUS } from '../../data/constants'
 import { baht, satangToText, bahtToSatang, previewBill } from '../../utils/money'
@@ -74,6 +74,9 @@ function BillPanel({ visit, store, onBack }) {
     .reduce((n, p) => n + p.amount_satang, 0)
   const due = Math.max(0, bill.total - paid)
 
+  // อาหารที่ยังไม่ถึงมือลูกค้า — close_visit() ฝั่งฐานข้อมูลบล็อกการปิดรอบถ้ายังเหลือ
+  const waiting = unservedOf(store, visit.id)
+
   const [method, setMethod] = useState('cash')
   const [tendered, setTendered] = useState('')
   const [card, setCard] = useState(TEST_CARDS[0].number)
@@ -145,6 +148,9 @@ function BillPanel({ visit, store, onBack }) {
 
             <div className="slip__r" />
             <L label="รวมก่อนภาษี" v={bill.subtotal} />
+            {(visit.promotions ?? []).map((p) => (
+              <L key={p.promotion_id} label={`ส่วนลด · ${p.name_snapshot}`} v={-p.discount_satang} />
+            ))}
             {s.service_charge_enabled && <L label={`Service Charge ${s.service_charge_rate_bp / 100}%`} v={bill.service} />}
             {s.vat_enabled && (
               <L label={`VAT ${s.vat_rate_bp / 100}%${s.vat_inclusive ? ' (รวมแล้ว)' : ''}`}
@@ -174,6 +180,15 @@ function BillPanel({ visit, store, onBack }) {
         <div className="card pad">
           <h3 className="t-head" style={{ marginBottom: 12 }}>รับชำระเงิน</h3>
 
+          {waiting.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <Note tone="warn" icon="clock">
+                ยังมีอาหารค้างที่ครัว {waiting.length} รายการ — เก็บเงินได้
+                แต่ปิดรอบไม่ได้จนกว่าครัวจะกดเสิร์ฟหรือยกเลิกครบ
+              </Note>
+            </div>
+          )}
+
           {due === 0 ? (
             <>
               <div style={{ marginBottom: 14 }}>
@@ -181,9 +196,10 @@ function BillPanel({ visit, store, onBack }) {
                   ชำระครบแล้ว ขั้นถัดไปคือปิดรอบเพื่อส่งโต๊ะไปทำความสะอาด
                 </Note>
               </div>
-              <button className="btn btn--primary btn--block" disabled={visit.status !== 'paid'}
+              <button className="btn btn--primary btn--block"
+                      disabled={visit.status !== 'paid' || waiting.length > 0}
                       onClick={() => { store.dispatch({ type: 'CLOSE_VISIT', visitId: visit.id }); onBack() }}>
-                ปิดรอบ · โต๊ะไปทำความสะอาด
+                {waiting.length > 0 ? `รอครัวเคลียร์อีก ${waiting.length} รายการ` : 'ปิดรอบ · โต๊ะไปทำความสะอาด'}
               </button>
             </>
           ) : (
@@ -192,6 +208,8 @@ function BillPanel({ visit, store, onBack }) {
                 <p className="t-xs muted">ยอดที่ต้องชำระ</p>
                 <p className="t-display num" style={{ fontSize: 32 }}>{baht(due)}</p>
               </div>
+
+              <PromoBox visit={visit} store={store} />
 
               {PAYMENT_METHODS.map((m) => (
                 <button key={m.id} className={`pay ${method === m.id ? 'pay--on' : ''}`}
@@ -209,7 +227,9 @@ function BillPanel({ visit, store, onBack }) {
                 {method === 'cash' && (
                   <>
                     <label className="field">
-                      <span>รับเงินมา (บาท)</span>
+                      {/* ปล่อยว่าง = รับพอดี — ของเดิม placeholder โชว์ยอดเหมือนกรอกไว้แล้ว
+                          แต่ปุ่มยืนยันถูก disable เงียบ ๆ จนกว่าจะพิมพ์เอง */}
+                      <span>รับเงินมา (บาท) · ปล่อยว่างคือรับพอดี</span>
                       <input inputMode="decimal" value={tendered} placeholder={satangToText(due)}
                              onChange={(e) => setTendered(e.target.value)} />
                     </label>
@@ -280,7 +300,7 @@ function BillPanel({ visit, store, onBack }) {
               )}
 
               <button className="btn btn--primary btn--lg btn--block"
-                      disabled={busy || short || (method === 'cash' && tendered === '')}
+                      disabled={busy || short}
                       onClick={pay}>
                 {busy ? 'กำลังดำเนินการ…' : `ยืนยันรับชำระ ${baht(due)}`}
               </button>
@@ -289,6 +309,54 @@ function BillPanel({ visit, store, onBack }) {
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * ใส่โค้ดโปรโมชั่นก่อนรับเงิน
+ *
+ * เงื่อนไขทั้งหมด (วัน เวลา ยอดขั้นต่ำ จำนวนครั้ง) ตรวจใน apply_promotion_code()
+ * หน้าจอมีหน้าที่ส่งโค้ดกับแสดงข้อความกลับเท่านั้น — ห้ามคิดส่วนลดเองฝั่งเบราว์เซอร์
+ */
+function PromoBox({ visit, store }) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const applied = visit.promotions ?? []
+
+  async function run(fn) {
+    setBusy(true); setError(null)
+    try { await fn() } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {applied.map((p) => (
+        <div key={p.promotion_id} className="between" style={{ marginBottom: 8 }}>
+          <Chip tone="gold" icon="tag">{p.name_snapshot} −{baht(p.discount_satang)}</Chip>
+          <button className="btn btn--quiet btn--sm" disabled={busy}
+                  onClick={() => run(() => store.removePromo(visit.id, p.promotion_id))}>
+            ถอด
+          </button>
+        </div>
+      ))}
+
+      <div className="row g8">
+        <input className="grow" placeholder="โค้ดโปรโมชั่น" value={code}
+               style={{ textTransform: 'uppercase' }}
+               onChange={(e) => setCode(e.target.value)}
+               onKeyDown={(e) => {
+                 if (e.key !== 'Enter' || !code.trim()) return
+                 run(async () => { await store.applyPromo(visit.id, code.trim()); setCode('') })
+               }} />
+        <button className="btn btn--default" disabled={busy || !code.trim()}
+                onClick={() => run(async () => { await store.applyPromo(visit.id, code.trim()); setCode('') })}>
+          ใส่โค้ด
+        </button>
+      </div>
+
+      {error && <div style={{ marginTop: 10 }}><Note tone="warn" icon="alert">{error}</Note></div>}
+    </div>
   )
 }
 

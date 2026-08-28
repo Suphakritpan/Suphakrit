@@ -24,15 +24,33 @@ const StoreCtx = createContext(null)
 const BOOT_TIMEOUT_MS = 12000
 
 function withTimeout(promise, label, ms = BOOT_TIMEOUT_MS) {
+  let timer
   return Promise.race([
     promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`${label}นานเกิน ${ms / 1000} วินาที — เช็คอินเทอร์เน็ตหรือสถานะ Supabase`)), ms)),
-  ])
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label}นานเกิน ${ms / 1000} วินาที — เช็คอินเทอร์เน็ตหรือสถานะ Supabase`)), ms)
+    }),
+  ]).finally(() => clearTimeout(timer))
 }
 
 /** สถานะของรอบที่ยังไม่ปิด — ตรงกับที่ queries.js กรอง และที่ RLS ยอมให้เห็น */
 const ACTIVE_VISIT = ['open', 'awaiting_payment', 'paid']
+
+/**
+ * ทางเข้าโต๊ะของเครื่องนี้ เก็บไว้ข้ามการรีเฟรช
+ *
+ * เดิม joinedVisitId อยู่ใน state ล้วน พอลูกค้ากด F5 หรือสลับแอปแล้วเครื่อง reload
+ * ค่านี้หายไป แล้วหน้าลูกค้าตกไปใช้ "visit ที่เปิดอยู่ใบแรก" = โต๊ะของคนอื่น
+ * ซึ่งบนมือถือจริงเกิดตลอด (pull-to-refresh, กลับมาจากแอปอื่น)
+ */
+const VISIT_KEY = 'shabu.visit'
+
+function readVisitKey() {
+  try { return JSON.parse(localStorage.getItem(VISIT_KEY) ?? 'null') } catch { return null }
+}
+function writeVisitKey(v) {
+  try { v ? localStorage.setItem(VISIT_KEY, JSON.stringify(v)) : localStorage.removeItem(VISIT_KEY) } catch { /* โหมดส่วนตัวบางเบราว์เซอร์เขียนไม่ได้ */ }
+}
 
 const initial = {
   tables: demo.tables,
@@ -314,11 +332,14 @@ export function StoreProvider({ children }) {
     let alive = true
     loadReference()
       .then((ref) => { if (alive) setReference(ref) })
-      .catch(() => {})
+      // เงียบไม่ได้ — พลาดตรงนี้คือคอนโซลกลับไปเป็น "0 โต๊ะ" โดยไม่มีอะไรบอก
+      .catch((e) => { if (alive) setConn({ status: 'error', reason: `โหลดข้อมูลอ้างอิงใหม่ไม่สำเร็จ: ${e.message}` }) })
     return () => { alive = false }
   }, [mode, staffId, joinedVisitId])
 
   // ── โหลดสถานะหน้าร้าน + ติดตาม realtime ───────────────────────────────────
+  // ตัวเลขแดชบอร์ดต้องโหลดคู่กันเสมอ ไม่งั้นเก็บเงินแล้วยอดขายยังเป็นของเก่าจนกว่าจะรีเฟรชหน้า
+  const tz = reference?.settings?.timezone ?? 'Asia/Bangkok'
   const refresh = useCallback(async () => {
     if (refreshing.current) return
     refreshing.current = true
@@ -326,20 +347,25 @@ export function StoreProvider({ children }) {
       const floor = await loadFloorState()
       rawDispatch({ type: 'HYDRATE', data: floor })
       setHydrated(true)
+      loadDashboard(tz).then(setDash).catch(() => {})
     } catch (e) {
       setConn({ status: 'error', reason: e.message })
     } finally {
       refreshing.current = false
     }
-  }, [])
+  }, [tz])
 
   useEffect(() => {
     if (mode !== 'live') return
     refresh()
-    loadDashboard(reference?.settings?.timezone).then(setDash).catch(() => {})
 
     const stop = subscribeFloor(
-      () => refresh(),
+      (info) => {
+        // เมนูอยู่ใน reference ไม่ใช่ floor state — กด 86 แล้วต้องโหลดชุดอ้างอิงใหม่
+        // ไม่งั้นมือถือลูกค้าที่เปิดค้างยังเห็นเมนูที่หมดไปแล้วจนกว่าจะ reload
+        if (info?.table === 'menu_items') loadReference().then(setReference).catch(() => {})
+        refresh()
+      },
       (status) => {
         if (status === 'SUBSCRIBED') setConn({ status: 'live', reason: null })
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -366,7 +392,7 @@ export function StoreProvider({ children }) {
           break
 
         case 'ADVANCE_ITEM':
-          await api.advanceOrderItem(action.itemId, action.next)
+          await api.advanceOrderItem(action.itemId, action.next, action.reason ?? null)
           break
 
         case 'BUMP_ORDER': {
@@ -423,9 +449,11 @@ export function StoreProvider({ children }) {
           // ยอดที่เชื่อได้คือของฐานข้อมูล ไม่ใช่ previewBill ฝั่งหน้าจอ
           // (previewBill มีไว้ "แสดง" ระหว่างกินเท่านั้น ตามที่ money.js เขียนไว้)
           const due = await api.amountDue(action.visitId)
+          // จ่ายแยกได้: หน้าจอส่งยอดมาเท่าไหร่ก็เก็บเท่านั้น แต่ห้ามเกินยอดคงเหลือ
+          const amount = Math.min(action.amount ?? due, due)
           const p = await api.createPayment({
             visitId: action.visitId, method: action.method,
-            amountSatang: due, tenderedSatang: action.tendered,
+            amountSatang: amount, tenderedSatang: action.tendered,
           })
           await api.confirmPayment(p.id)
           rawDispatch({ type: 'TOAST', toast: { kind: 'ok', text: 'ชำระเงินสำเร็จ — ออกใบเสร็จแล้ว' } })
@@ -442,7 +470,9 @@ export function StoreProvider({ children }) {
           break
 
         case 'TOGGLE_MENU': {
-          const m = state.menuItems.find((x) => x.id === action.menuId)
+          // โหมด live เมนูอยู่ใน reference ไม่ใช่ state — หยิบผิดที่แล้ว m เป็น undefined
+          const m = (reference?.menuItems ?? state.menuItems).find((x) => x.id === action.menuId)
+          if (!m) break
           await api.setMenuAvailability(action.menuId, !m.is_available)
           setReference((r) => ({
             ...r,
@@ -491,24 +521,67 @@ export function StoreProvider({ children }) {
     return v
   }, [refresh])
 
+  // โปรโมชั่นต้องคืน error ของฐานข้อมูลให้หน้าจอแสดงตรง ๆ (โค้ดผิด / นอกช่วงเวลา / ยอดไม่ถึง)
+  // dispatch คืนแค่ true/false จึงใช้ไม่ได้
+  const applyPromo = useCallback(async (visitId, code) => {
+    const v = await api.applyPromotionCode(visitId, code)
+    await refresh()
+    return v
+  }, [refresh])
+
+  const removePromo = useCallback(async (visitId, promotionId) => {
+    const v = await api.removePromotion(visitId, promotionId)
+    await refresh()
+    return v
+  }, [refresh])
+
+  // หน้าผู้จัดการแก้ราคา/เมนู/โต๊ะแล้วต้องเห็นผลทันทีทุกจอ โดยไม่ต้องรีเฟรชหน้า
+  const reloadReference = useCallback(async () => {
+    const ref = await loadReference()
+    setReference(ref)
+    return ref
+  }, [])
+
   const issueQueue = useCallback(async (input) => {
     const ticket = await api.issueQueueTicket(input)
     await refresh()
     return ticket
   }, [refresh])
 
-  const joinByToken = useCallback(async (token) => {
-    const visit = await api.joinVisit({ sessionToken: token })
+  // code = รหัส 6 หลักบนสลิป ใช้คู่กับ QR สติกเกอร์ติดโต๊ะ (tables.qr_token)
+  // ไม่มี code = QR บนสลิปซึ่งเป็น visits.session_token ใบเดียวต่อหนึ่งรอบ
+  const joinByToken = useCallback(async (token, code = null) => {
+    const visit = await api.joinVisit(
+      code ? { tableQrToken: token, accessCode: code } : { sessionToken: token })
     setJoinedVisitId(visit.id)
+    writeVisitKey({ token, code })
     await refresh()
     return visit
   }, [refresh])
+
+  // กลับเข้าโต๊ะเดิมหลังรีเฟรช — join_visit เป็น idempotent (visit_devices ใช้ on conflict)
+  // ล้มเหลวเมื่อไหร่ (ปิดบิลไปแล้ว / รหัสถูกล้าง) ทิ้ง key ไปเลย ไม่ต้องพยายามอีก
+  const rejoining = useRef(false)
+  useEffect(() => {
+    if (mode !== 'live' || joinedVisitId || rejoining.current) return
+    const saved = readVisitKey()
+    if (!saved?.token) return
+    rejoining.current = true
+    joinByToken(saved.token, saved.code ?? null)
+      .catch(() => writeVisitKey(null))
+      .finally(() => { rejoining.current = false })
+  }, [mode, joinedVisitId, joinByToken])
 
   // ── รวมข้อมูลให้หน้าจอใช้ — รูปทรงเดียวกันทั้งสองโหมด ─────────────────────
   const api_ = useMemo(() => {
     const live = mode === 'live' && reference
 
-    const tables = live ? reference.tables.map((t) => ({ ...t, zone: zoneCodeOf(t, reference) })) : state.tables
+    // โต๊ะของจริงมาจาก loadFloorState() ที่โหลดใหม่ทุกครั้งที่ realtime แจ้ง
+    // reference.tables เป็นค่าตั้งต้นระหว่างรอ HYDRATE รอบแรกเท่านั้น
+    const liveTables = live
+      ? (state.floorTables?.length ? state.floorTables : reference.tables)
+      : null
+    const tables = live ? liveTables.map((t) => ({ ...t, zone: zoneCodeOf(t, reference) })) : state.tables
     const menuItems = live ? reference.menuItems : state.menuItems
     const settings = live && reference.settings ? reference.settings : demo.settings
     const packages = live ? reference.packages : demo.packages
@@ -531,11 +604,14 @@ export function StoreProvider({ children }) {
     const activeVisitOf = (tableId) =>
       visits.find((v) => v.table_id === tableId && ACTIVE_VISIT.includes(v.status))
 
+    // ตั๋วของ visit ที่ปิดไปแล้วต้องไม่โผล่ที่จอครัวหรือหน้ารอเสิร์ฟ
+    // (เคยขึ้นเป็นตั๋วชื่อโต๊ะว่าง ๆ ที่ไม่มีใครเคลียร์ได้ เพราะโต๊ะถูกปล่อยคืนแล้ว)
     const kitchenTickets = () =>
       orders
         .map((o) => {
           const visit = visitOf(o.visit_id)
-          const table = visit && tableOf(visit.table_id)
+          if (!visit) return null
+          const table = tableOf(visit.table_id)
           const liveItems = o.items.filter((i) => i.status !== 'served' && i.status !== 'cancelled')
           return liveItems.length ? { ...o, items: liveItems, table, visit } : null
         })
@@ -545,7 +621,8 @@ export function StoreProvider({ children }) {
     const readyToServe = () =>
       orders.flatMap((o) => {
         const visit = visitOf(o.visit_id)
-        const table = visit && tableOf(visit.table_id)
+        if (!visit) return []
+        const table = tableOf(visit.table_id)
         return o.items.filter((i) => i.status === 'ready').map((i) => ({ ...i, order: o, table, visit }))
       })
 
@@ -564,9 +641,9 @@ export function StoreProvider({ children }) {
       return [...map.values()]
     }
 
-    // ฝั่งลูกค้า: ของจริงมาจาก /v/:token — ในเดโมหยิบโต๊ะที่เปิดอยู่ใบแรกมาแสดง
-    const customerVisitId = joinedVisitId
-      ?? (live ? (visits.find((v) => v.status === 'open')?.id ?? null) : demo.CUSTOMER_VISIT_ID)
+    // ฝั่งลูกค้า: ของจริงต้องมาจาก /v/:token เท่านั้น
+    // ห้าม fallback ไปโต๊ะที่เปิดอยู่ใบแรก — เครื่องที่ยังไม่ได้ join จะไปโผล่โต๊ะคนอื่น
+    const customerVisitId = joinedVisitId ?? (live ? null : demo.CUSTOMER_VISIT_ID)
 
     return {
       ...state,
@@ -581,9 +658,11 @@ export function StoreProvider({ children }) {
       refresh, dispatch,
       signInStaff: api.signInStaff,
       signOut: api.signOut,
-      joinByToken, issueQueue, seatTable, adjustGuests,
+      joinByToken, issueQueue, seatTable, adjustGuests, applyPromo, removePromo, reloadReference,
+      branchId: reference?.settings?.branch_id ?? null,
+      zones: live ? reference.zones : [],
     }
-  }, [state, mode, conn, reference, dash, refresh, dispatch, session, profile, joinedVisitId, joinByToken, issueQueue, seatTable, adjustGuests, hydrated])
+  }, [state, mode, conn, reference, dash, refresh, dispatch, session, profile, joinedVisitId, joinByToken, issueQueue, seatTable, adjustGuests, applyPromo, removePromo, reloadReference, hydrated])
 
   return <StoreCtx.Provider value={api_}>{children}</StoreCtx.Provider>
 }

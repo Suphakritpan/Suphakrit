@@ -38,7 +38,13 @@ Supabase Dashboard → **SQL Editor** → วางไฟล์ที่ได�
 | 8 | `migrations/0008_functions_rpc.sql` | helper, state machine, RPC ทั้งหมด |
 | 9 | `migrations/0009_rls_realtime.sql` | RLS policy, สิทธิ์, view, realtime |
 | 10 | `migrations/0010_token_fallback.sql` | ทางเข้าสำรองด้วย token ล้วน |
-| 11 | `seed.sql` | สาขา, 2 แพ็กเกจ, add-on, 10 หมวด, 64 เมนู, 3 โซน 12 โต๊ะ |
+| 11 | `migrations/0011_queue_tickets.sql` | บัตรคิว, QR เช็คคิวของลูกค้า |
+| 12 | `migrations/0012_scope_staff_rls_by_branch.sql` | จำกัดสิทธิ์พนักงานตามสาขา |
+| 13 | `migrations/0013_align_remote_grants.sql` | ปรับ grant ให้ตรงกับที่ remote ต้องการ |
+| 14 | `migrations/0014_queue_dashboard_and_guest_adjust.sql` | แดชบอร์ดคิว, แก้จำนวนคนกลางรอบ, กันจ่ายซ้ำ |
+| 15 | `migrations/0015_fix_guest_adjust_audit.sql` | audit ของการแก้จำนวนคน |
+| 16 | `migrations/0016_ops_gaps.sql` | บล็อกปิดรอบเมื่อมีอาหารค้างครัว, ครัวยกเลิกรายการพร้อมเหตุผล, โปรโมชั่นด้วยโค้ด, audit ของคิว, realtime ของเมนู |
+| 17 | `seed.sql` | สาขา, 2 แพ็กเกจ, add-on, 10 หมวด, 64 เมนู, 3 โซน 12 โต๊ะ |
 
 ### หลังรันเสร็จ ต้องทำอีก 2 อย่าง
 

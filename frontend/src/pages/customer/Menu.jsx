@@ -48,12 +48,19 @@ export default function CustomerMenu() {
   const overUnits = cart.totalUnits > s.max_units_per_order
   const blocked = closed || waitLeft > 0 || tooMany || overLines || overUnits
 
-  function confirm() {
-    store.dispatch({
+  const [sending, setSending] = useState(false)
+
+  // ต้องรอผลจริง — ของเดิมล้างตะกร้าทันทีโดยไม่สนว่าฐานข้อมูลรับหรือไม่
+  // เมนูที่เพิ่งหมดจะถูกปฏิเสธฝั่ง server แล้วลูกค้าเห็นตะกร้าว่างเปล่า เข้าใจว่าสั่งสำเร็จ
+  async function confirm() {
+    setSending(true)
+    const ok = await store.dispatch({
       type: 'PLACE_ORDER',
       visitId: visit.id,
       items: cart.lines.map(([menu_item_id, quantity]) => ({ menu_item_id, quantity })),
     })
+    setSending(false)
+    if (!ok) return          // ข้อความจากฐานข้อมูลขึ้นเป็น toast ให้แล้ว ตะกร้าคงไว้ให้แก้
     cart.clear()
     setReview(false)
   }
@@ -272,8 +279,8 @@ export default function CustomerMenu() {
 
             <div className="sheet__ft">
               <button className="btn btn--default grow" onClick={() => setReview(false)}>สั่งเพิ่ม</button>
-              <button className="btn btn--primary grow" disabled={blocked} onClick={confirm}>
-                <Icon name="check" size={16} strokeWidth={2} /> ยืนยันการสั่ง
+              <button className="btn btn--primary grow" disabled={blocked || sending} onClick={confirm}>
+                <Icon name="check" size={16} strokeWidth={2} /> {sending ? 'กำลังส่ง…' : 'ยืนยันการสั่ง'}
               </button>
             </div>
           </div>

@@ -19,6 +19,8 @@ const WATCHED = [
   'tables',
   'queue_tickets',
   'payments',
+  // กด 86 แล้วมือถือลูกค้าที่เปิดค้างต้องรู้ทันที ไม่ต้องรอ reload
+  'menu_items',
 ]
 
 /**

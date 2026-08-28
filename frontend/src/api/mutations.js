@@ -97,15 +97,34 @@ export async function cancelQueueTicket(id, noShow = false) {
 
 // ── ฝั่งลูกค้า ──────────────────────────────────────────────────────────────
 
-/** เข้าโต๊ะด้วย QR จากสลิป หรือ QR ติดโต๊ะ + รหัส 6 หลัก */
+/**
+ * เข้าโต๊ะด้วย QR จากสลิป หรือ QR ติดโต๊ะ + รหัส 6 หลัก
+ *
+ * ทางรหัสใช้ join_visit_with_code() ซึ่งคืน {ok:false, error} แทนการ raise
+ * เพราะการ raise จะ rollback แถวที่บันทึกว่า "ใส่รหัสผิด" ไปด้วย
+ * แล้วเพดาน qr_max_failed_attempts จะนับไม่ขึ้นเลย (0017)
+ */
 export async function joinVisit({ sessionToken, tableQrToken, accessCode, nickname }) {
   await signInAnonymously()
+  const userAgent = navigator.userAgent.slice(0, 200)
+
+  if (tableQrToken) {
+    const res = unwrap(await supabase.rpc('join_visit_with_code', {
+      p_table_qr_token: tableQrToken,
+      p_access_code: accessCode ?? null,
+      p_nickname: nickname ?? null,
+      p_user_agent: userAgent,
+    }))
+    if (!res?.ok) throw new Error(res?.error ?? 'เข้าโต๊ะไม่สำเร็จ')
+    return res.visit
+  }
+
   return unwrap(await supabase.rpc('join_visit', {
     p_session_token: sessionToken ?? null,
-    p_table_qr_token: tableQrToken ?? null,
-    p_access_code: accessCode ?? null,
+    p_table_qr_token: null,
+    p_access_code: null,
     p_nickname: nickname ?? null,
-    p_user_agent: navigator.userAgent.slice(0, 200),
+    p_user_agent: userAgent,
   }))
 }
 
@@ -151,8 +170,10 @@ export async function openVisit({ tableId, packageId, adults, children, addons =
   }))
 }
 
-export async function advanceOrderItem(itemId, next) {
-  return unwrap(await supabase.rpc('advance_order_item', { p_item_id: itemId, p_next: next }))
+export async function advanceOrderItem(itemId, next, reason = null) {
+  return unwrap(await supabase.rpc('advance_order_item', {
+    p_item_id: itemId, p_next: next, p_reason: reason,
+  }))
 }
 
 export async function resolveRequest(id) {
@@ -188,6 +209,19 @@ export async function confirmPayment(paymentId, providerRef = null, payload = nu
 
 export async function cancelPayment(paymentId, reason = null) {
   return unwrap(await supabase.rpc('cancel_payment', { p_payment_id: paymentId, p_reason: reason }))
+}
+
+/** ใส่โค้ดโปรโมชั่นที่หน้าเช็คบิล — เงื่อนไขทั้งหมดตรวจฝั่งฐานข้อมูล (0016) */
+export async function applyPromotionCode(visitId, code) {
+  return unwrap(await supabase.rpc('apply_promotion_code', {
+    p_visit_id: visitId, p_code: code,
+  }))
+}
+
+export async function removePromotion(visitId, promotionId) {
+  return unwrap(await supabase.rpc('remove_visit_promotion', {
+    p_visit_id: visitId, p_promotion_id: promotionId,
+  }))
 }
 
 export async function amountDue(visitId) {

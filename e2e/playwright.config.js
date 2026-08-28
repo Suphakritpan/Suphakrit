@@ -25,8 +25,16 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
 
+  // สมัคร anonymous ครั้งเดียวต่อการรัน แล้วแชร์ให้ทุก context
+  // ไม่งั้นชนเพดาน anonymous sign-in ของ Supabase แล้วแอปตกโหมดสำรองกลางชุดเทสต์
+  globalSetup: './support/global-setup.js',
+
+  // กวาดแถวที่ขึ้นต้นด้วย E2E- ทิ้งท้ายการรัน — เทสต์ที่ล้มกลางทางไม่ได้เก็บของตัวเอง
+  globalTeardown: './support/global-teardown.js',
+
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
+    storageState: './support/anon-state.json',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     locale: 'th-TH',

@@ -6,10 +6,15 @@ import Icon from '../../components/ui/Icon'
 import { ORDER_STATUS } from '../../data/constants'
 import { minutesSince, clockTH } from '../../utils/time'
 
+// เหตุผลสำเร็จรูป — ยกเลิกอาหารเป็นรายการที่กระทบบิล จึงต้องมีเหตุผลติดไปด้วยเสมอ
+// (เก็บลง order_items.cancelled_reason และ audit_logs โดย advance_order_item)
+const CANCEL_REASONS = ['ของหมด', 'ลูกค้ายกเลิก', 'ทำผิดรายการ', 'ปิดรอบ/ลูกค้ากลับแล้ว']
+
 export default function StaffKitchen() {
   useTick(10000)
   const store = useStore()
   const [station, setStation] = useState('all')
+  const [cancelling, setCancelling] = useState(null)
 
   const all = store.kitchenTickets()
   const tickets = all
@@ -77,6 +82,10 @@ export default function StaffKitchen() {
                         </span>
                       )}
                     </span>
+                    <button className="btn btn--sm btn--quiet" title="ยกเลิกรายการนี้"
+                            onClick={() => setCancelling({ item: it, table: t.table })}>
+                      <Icon name="close" size={14} />
+                    </button>
                     {ORDER_STATUS[it.status].next && (
                       <button className="btn btn--sm btn--default"
                               onClick={() => store.dispatch({
@@ -109,6 +118,46 @@ export default function StaffKitchen() {
           })}
         </div>
       </div>
+
+      {cancelling && (
+        <CancelSheet {...cancelling} store={store} onClose={() => setCancelling(null)} />
+      )}
     </>
+  )
+}
+
+function CancelSheet({ item, table, store, onClose }) {
+  const [busy, setBusy] = useState(false)
+
+  async function cancel(reason) {
+    setBusy(true)
+    await store.dispatch({ type: 'ADVANCE_ITEM', itemId: item.id, next: 'cancelled', reason })
+    onClose()
+  }
+
+  return (
+    <div className="sheet" onClick={onClose}>
+      <div className="sheet__box" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet__hd">
+          <h3 className="t-title">ยกเลิก {item.name_snapshot} × {item.quantity}</h3>
+          <p className="t-xs muted" style={{ marginTop: 3 }}>
+            โต๊ะ {table?.table_number ?? '—'} · เลือกเหตุผลเพื่อบันทึกลงบิลและ audit
+          </p>
+        </div>
+        <div className="sheet__bd">
+          <div className="stack g8">
+            {CANCEL_REASONS.map((r) => (
+              <button key={r} className="btn btn--default btn--block" disabled={busy}
+                      onClick={() => cancel(r)}>
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="sheet__ft">
+          <button className="btn btn--quiet grow" onClick={onClose}>ไม่ยกเลิก</button>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useStore } from '../../context/StoreProvider'
 import { CustomerBar } from '../../components/layout/Layouts'
-import { Chip, MockBanner } from '../../components/shared/Bits'
+import { Chip, MockBanner, Note, unservedOf } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { baht, previewBill } from '../../utils/money'
 import { VISIT_STATUS } from '../../data/constants'
@@ -14,6 +14,7 @@ export default function CustomerBill() {
 
   const bill = previewBill({ visit, addons: visit.addons, extraItems: extras, settings: s })
   const guests = visit.adult_count + visit.child_count
+  const waiting = unservedOf(store, visit.id)
   const points = s.points_enabled ? Math.floor(bill.total / 100 / s.points_baht_per_point) : 0
 
   return (
@@ -104,6 +105,16 @@ export default function CustomerBill() {
               <p className="t-sm muted" style={{ marginBottom: 12 }}>
                 กดแจ้งพนักงาน แล้วรอที่โต๊ะได้เลย พนักงานจะนำใบเสร็จมาให้และรับชำระที่โต๊ะ
               </p>
+
+              {/* ลูกค้าควรรู้ก่อนกดว่ายังมีของค้างครัว จะได้เลือกเองว่ารอหรือไม่รอ */}
+              {waiting.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <Note tone="warn" icon="clock">
+                    ยังมีอาหารที่ครัวกำลังเตรียม {waiting.length} รายการ —
+                    เช็คบิลได้ แต่จะสั่งเพิ่มไม่ได้แล้ว
+                  </Note>
+                </div>
+              )}
               <button
                 className="btn btn--primary btn--lg btn--block"
                 onClick={() => store.dispatch({ type: 'CALL_STAFF', visitId: visit.id, reqType: 'request_bill' })}

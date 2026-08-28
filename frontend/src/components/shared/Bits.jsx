@@ -4,6 +4,18 @@ import { remaining, elapsedRatio } from '../../utils/time'
 import { useStore } from '../../context/StoreProvider'
 import Icon from '../ui/Icon'
 
+/**
+ * จำนวนจานที่ยังไม่ถึงมือลูกค้า — ใช้ทั้งฝั่งลูกค้า พนักงาน และเงื่อนไขปิดรอบ
+ *
+ * เกณฑ์เดียวกับที่ close_visit() ใช้บล็อกการปิดรอบ (0016) เพื่อให้หน้าจอกับ
+ * ฐานข้อมูลนับตรงกัน ไม่ใช่จอบอกว่าเคลียร์แล้วแต่กดปิดรอบไม่ผ่าน
+ */
+export function unservedOf(store, visitId) {
+  return store.ordersOf(visitId)
+    .flatMap((o) => o.items)
+    .filter((i) => i.status !== 'served' && i.status !== 'cancelled')
+}
+
 /** นาฬิกาที่เดินจริง อัปเดตตามรอบที่กำหนด */
 export function useTick(ms = 1000) {
   const [, force] = useState(0)

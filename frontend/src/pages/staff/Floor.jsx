@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
-import { Chip, TimeMeter, Countdown, Note, Kv, TableSlip, useTick } from '../../components/shared/Bits'
+import { Chip, TimeMeter, Countdown, Note, Kv, TableSlip, useTick, unservedOf } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { TABLE_STATUS, SERVICE_TYPES, VISIT_STATUS } from '../../data/constants'
 import { baht, previewBill } from '../../utils/money'
@@ -68,6 +68,9 @@ export default function StaffFloor() {
           {shown.map((t) => {
             const v = activeVisit(t.id)
             const meta = TABLE_STATUS[t.status]
+            // โต๊ะยัง occupied จนกว่าจะปิดรอบ (ข้อ ④) — แต่ต้องเห็นว่าเก็บเงินไปแล้ว
+            // ไม่งั้นโต๊ะที่จ่ายแล้วดูเหมือนโต๊ะที่ยังกินอยู่ ไม่มีใครรู้ว่าต้องกดปิดรอบ
+            const chip = (v && v.status !== 'open') ? VISIT_STATUS[v.status] : meta
             const r = v ? remaining(v.dining_deadline_at) : null
             const fresh = v
               ? store.ordersOf(v.id).flatMap((o) => o.items).filter((i) => i.status === 'pending').length
@@ -85,7 +88,7 @@ export default function StaffFloor() {
                 <p className="t-xs muted">{t.capacity} ที่นั่ง</p>
 
                 <div style={{ marginTop: 9 }}>
-                  <Chip tone={meta.tone}>{meta.label}</Chip>
+                  <Chip tone={chip.tone}>{chip.label}</Chip>
                 </div>
 
                 {v && (
@@ -94,11 +97,15 @@ export default function StaffFloor() {
                       <span className="trunc muted">
                         {v.package_name_snapshot} · {v.adult_count + v.child_count} ท่าน
                       </span>
-                      <span className="num bold" style={{ color: r.over ? 'var(--danger)' : 'var(--n200)' }}>
-                        {r.over ? 'หมดเวลา' : `${r.totalMinutes} น.`}
-                      </span>
+                      {v.status === 'paid' ? (
+                        <span className="num bold">รอปิดรอบ</span>
+                      ) : (
+                        <span className="num bold" style={{ color: r.over ? 'var(--danger)' : 'var(--n200)' }}>
+                          {r.over ? 'หมดเวลา' : `${r.totalMinutes} น.`}
+                        </span>
+                      )}
                     </div>
-                    <TimeMeter start={v.check_in_at} deadline={v.dining_deadline_at} />
+                    {v.status !== 'paid' && <TimeMeter start={v.check_in_at} deadline={v.dining_deadline_at} />}
                   </div>
                 )}
               </button>
@@ -169,6 +176,7 @@ export default function StaffFloor() {
 
 function VisitPanel({ visit, store, onDone }) {
   const [editing, setEditing] = useState(false)
+  const waiting = unservedOf(store, visit.id)
   const extras = store.extraItemsOf(visit.id)
   const bill = previewBill({ visit, addons: visit.addons, extraItems: extras, settings: store.settings })
   const orders = store.ordersOf(visit.id)
@@ -217,10 +225,20 @@ function VisitPanel({ visit, store, onDone }) {
       {editing && <GuestSheet visit={visit} store={store} onClose={() => setEditing(false)} />}
 
       {visit.status === 'paid' && (
-        <button className="btn btn--primary btn--block" style={{ marginTop: 16 }}
-                onClick={() => { store.dispatch({ type: 'CLOSE_VISIT', visitId: visit.id }); onDone() }}>
-          ปิดรอบ · ส่งโต๊ะไปทำความสะอาด
-        </button>
+        <>
+          {waiting.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <Note tone="warn" icon="clock">
+                ยังมีอาหารค้างที่ครัว {waiting.length} รายการ — ให้ครัวกดเสิร์ฟหรือยกเลิกก่อนปิดรอบ
+              </Note>
+            </div>
+          )}
+          <button className="btn btn--primary btn--block" style={{ marginTop: 16 }}
+                  disabled={waiting.length > 0}
+                  onClick={() => { store.dispatch({ type: 'CLOSE_VISIT', visitId: visit.id }); onDone() }}>
+            ปิดรอบ · ส่งโต๊ะไปทำความสะอาด
+          </button>
+        </>
       )}
     </>
   )

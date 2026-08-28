@@ -8,7 +8,7 @@ const FILES = [
   '0005_visits', '0006_orders', '0007_billing_payments', '0008_functions_rpc',
   '0009_rls_realtime', '0010_token_fallback', '0011_queue_tickets',
   '0012_scope_staff_rls_by_branch', '0013_align_remote_grants',
-  '0014_queue_dashboard_and_guest_adjust',
+  '0014_queue_dashboard_and_guest_adjust', '0015_fix_guest_adjust_audit', '0016_ops_gaps', '0017_qr_code_attempts',
 ].map(f => `migrations/${f}.sql`).concat('seed.sql')
 
 const sanitize = (s) => s
@@ -166,6 +166,32 @@ ok('เลขใบเสร็จรันแยกใบ', receipts.map(r => `
 console.log('\n── ④ PAID → CLOSED → CLEANING → AVAILABLE ──')
 await shouldFail('ข้ามขั้นจาก paid ไป open', 'เปลี่ยนสถานะ visit', () =>
   q(`update visits set status='open' where id=$1`, [visit.id]))
+
+// อาหารที่ยังไม่ถึงมือลูกค้าต้องถูกเคลียร์ก่อน ไม่งั้นตั๋วจะค้างจอครัวถาวร
+// หลังปิดรอบโต๊ะถูกปล่อยคืน ตั๋วนั้นจะไม่มีชื่อโต๊ะและไม่มีใครกดปิดได้อีก
+await shouldFail('ปิดรอบทั้งที่อาหารยังค้างครัว', 'ยังมีอาหารค้างที่ครัว', () =>
+  q(`select * from close_visit($1)`, [visit.id]))
+
+const stuck = await q(
+  `select i.id, i.status from order_items i join orders o on o.id = i.order_id
+    where o.visit_id = $1 and i.status in ('pending','preparing','ready') order by i.created_at`, [visit.id])
+
+await shouldPass('ครัวยกเลิกรายการพร้อมเหตุผล', () =>
+  q(`select * from advance_order_item($1,'cancelled','ของหมด')`, [stuck[0].id]))
+
+const [cancelled] = await q(`select status, cancelled_reason from order_items where id=$1`, [stuck[0].id])
+if (cancelled.status === 'cancelled' && cancelled.cancelled_reason === 'ของหมด')
+  ok('เหตุผลการยกเลิกถูกบันทึก', cancelled.cancelled_reason)
+else bad('cancelled_reason', JSON.stringify(cancelled))
+
+const NEXT = { pending: 'preparing', preparing: 'ready', ready: 'served' }
+for (const it of stuck.slice(1)) {
+  let s = it.status
+  while (NEXT[s]) {
+    await q(`select * from advance_order_item($1,$2::order_status)`, [it.id, NEXT[s]])
+    s = NEXT[s]
+  }
+}
 
 await shouldPass('ปิดรอบ (paid → closed)', () => q(`select * from close_visit($1)`, [visit.id]))
 
@@ -382,6 +408,101 @@ console.log('\n── P0-7 แยกข้อมูลข้ามสาขา �
     `select prosrc src from pg_proc where proname='is_staff'`)
   if (/branch/i.test(src)) ok('is_staff() พิจารณาสาขา')
   else ok('ยืนยันสาเหตุ', 'is_staff() เช็คแค่ว่ามีแถวใน profiles และ is_active — ไม่มีสาขาในเงื่อนไข')
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── โปรโมชั่นด้วยโค้ด (0016) ──')
+// เงื่อนไขของโปรตัดสินที่ฐานข้อมูล หน้าจอส่งมาแค่โค้ด จึงต้องพิสูจน์ที่ชั้นนี้
+{
+  const { visit } = await freshVisit(stdPkg, 2)
+  await be(staffUid)
+
+  // ทำให้ผลลัพธ์ไม่ขึ้นกับเวลาที่รันเทสต์ — LUNCH10 ของจริงจำกัด จ–ศ 11:00–16:00
+  await q(`update promotions set days_of_week='{}', time_start=null, time_end=null where code='LUNCH10'`)
+
+  const [billed] = await q(`select * from request_visit_bill($1)`, [visit.id])
+  const expect = billed.subtotal_satang - Math.round(billed.subtotal_satang * 0.1)
+
+  await shouldFail('โค้ดที่ไม่มีอยู่จริง', 'ไม่พบโค้ดโปรโมชั่นนี้', () =>
+    q(`select * from apply_promotion_code($1,'NOPE')`, [visit.id]))
+
+  const [afterPromo] = await q(`select * from apply_promotion_code($1,'lunch10')`, [visit.id])
+  if (afterPromo.total_satang === expect)
+    ok('ใส่โค้ดแล้วยอดลด 10%', `${billed.total_satang / 100}฿ → ${afterPromo.total_satang / 100}฿`)
+  else bad('ส่วนลดจากโค้ด', `ได้ ${afterPromo.total_satang} คาด ${expect}`)
+
+  await shouldFail('ใส่โค้ดเดิมซ้ำ', 'ไปแล้ว', () =>
+    q(`select * from apply_promotion_code($1,'LUNCH10')`, [visit.id]))
+
+  const [{ n: used }] = await q(`select uses_count n from promotions where code='LUNCH10'`)
+  if (used === 1) ok('นับจำนวนครั้งที่ใช้', `${used} ครั้ง`)
+  else bad('uses_count', `ได้ ${used}`)
+
+  // นอกวันที่กำหนด — เลือกวันที่ไม่ใช่วันนี้เสมอ ไม่ว่าจะรันวันไหน
+  const { visit: v2 } = await freshVisit(stdPkg, 2)
+  await be(staffUid)
+  await q(`update promotions
+              set days_of_week = array[((extract(dow from now() at time zone 'Asia/Bangkok')::int + 3) % 7)]::smallint[]
+            where code='LUNCH10'`)
+  await shouldFail('ใช้โค้ดนอกวันที่กำหนด', 'ใช้ไม่ได้ในวันนี้', () =>
+    q(`select * from apply_promotion_code($1,'LUNCH10')`, [v2.id]))
+  await q(`update promotions set days_of_week='{}' where code='LUNCH10'`)
+
+  // ถอดโปรออกแล้วยอดต้องกลับเป็นเต็ม
+  const [{ id: promoId }] = await q(`select id from promotions where code='LUNCH10'`)
+  const [removed] = await q(`select * from remove_visit_promotion($1,$2)`, [visit.id, promoId])
+  if (removed.total_satang === billed.total_satang && removed.discount_satang === 0)
+    ok('ถอดโปรแล้วยอดกลับเป็นเต็ม', `${removed.total_satang / 100}฿`)
+  else bad('ถอดโปร', `ได้ ${removed.total_satang} คาด ${billed.total_satang}`)
+
+  // รับเงินไปแล้วบางส่วนแล้วมาใส่โปรทีหลัง = ยอดบิลต่ำกว่าเงินที่รับมา ต้องบล็อก
+  const [{ due: due3 }] = await q(`select visit_amount_due($1) due`, [visit.id])
+  const [pay] = await q(`select * from create_payment($1,'cash',$2)`, [visit.id, Math.floor(due3 / 2)])
+  await q(`select * from confirm_payment($1)`, [pay.id])
+  await shouldFail('ใส่โปรหลังรับเงินไปแล้วบางส่วน', 'รับชำระเงินไปแล้ว', () =>
+    q(`select * from apply_promotion_code($1,'LUNCH10')`, [visit.id]))
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+console.log('\n── QR ติดโต๊ะ: นับรหัสผิดและล็อกได้จริง (0017) ──')
+// ของเดิม insert แถว "ผิด" แล้ว raise ในฟังก์ชันเดียวกัน = rollback ทิ้งทุกครั้ง
+// ตัวนับจึงได้ 0 ตลอด เดารหัส 6 หลักได้ไม่จำกัด
+{
+  // เทสต์ก่อนหน้าจองโต๊ะว่างไปหมดแล้ว — ใช้โต๊ะที่ยังเปิดอยู่ใบใดใบหนึ่งแทน
+  await be(staffUid)
+  const [visit] = await q(`select * from visits where status='open' order by check_in_at desc limit 1`)
+  const [table] = await q(`select * from tables where id=$1`, [visit.table_id])
+  const [{ id: guest }] = await q(`insert into auth.users(email) values ('qr-guest@x.local') returning id`)
+  await be(guest)
+
+  const [{ join_visit_with_code: wrong }] = await q(
+    `select join_visit_with_code($1::uuid,'000000')`, [table.qr_token])
+  if (wrong.ok === false && wrong.error.includes('รหัสเข้าโต๊ะไม่ถูกต้อง')) ok('รหัสผิดถูกปฏิเสธ', wrong.error)
+  else bad('รหัสผิด', JSON.stringify(wrong))
+
+  const [{ n: logged }] = await q(
+    `select count(*)::int n from visit_access_attempts where visit_id=$1 and not succeeded`, [visit.id])
+  if (logged === 1) ok('ความพยายามที่ผิดถูกบันทึกไว้จริง', `${logged} ครั้ง`)
+  else bad('บันทึกรหัสผิด', `มี ${logged} แถว — transaction ถูก rollback อีกแล้ว`)
+
+  // ยิงจนครบเพดานแล้วต้องโดนล็อก แม้จะใส่รหัสถูกในครั้งถัดไป
+  const [{ max }] = await q(
+    `select qr_max_failed_attempts max from restaurant_settings limit 1`)
+  for (let i = logged; i < max; i++) {
+    await q(`select join_visit_with_code($1::uuid,'000001')`, [table.qr_token])
+  }
+  const [{ join_visit_with_code: locked }] = await q(
+    `select join_visit_with_code($1::uuid,$2)`, [table.qr_token, visit.access_code])
+  if (locked.ok === false && locked.error.includes('หลายครั้งเกินไป')) ok('ครบเพดานแล้วล็อกโต๊ะไว้', locked.error)
+  else bad('ล็อกหลังเดารหัสหลายครั้ง', JSON.stringify(locked))
+
+  // ปลดล็อกแล้วรหัสที่ถูกต้องต้องเข้าได้
+  await q(`update visits set access_locked_until = null where id=$1`, [visit.id])
+  await q(`delete from visit_access_attempts where visit_id=$1 and not succeeded`, [visit.id])
+  const [{ join_visit_with_code: good }] = await q(
+    `select join_visit_with_code($1::uuid,$2)`, [table.qr_token, visit.access_code])
+  if (good.ok === true && good.visit.id === visit.id) ok('รหัสถูกต้องเข้าโต๊ะได้')
+  else bad('เข้าด้วยรหัสที่ถูกต้อง', JSON.stringify(good))
 }
 
 console.log(`\n${'─'.repeat(60)}\nผ่าน ${pass} · ไม่ผ่าน ${fail}`)

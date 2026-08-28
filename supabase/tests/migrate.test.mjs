@@ -19,6 +19,9 @@ const FILES = [
   'migrations/0012_scope_staff_rls_by_branch.sql',
   'migrations/0013_align_remote_grants.sql',
   'migrations/0014_queue_dashboard_and_guest_adjust.sql',
+  'migrations/0015_fix_guest_adjust_audit.sql',
+  'migrations/0016_ops_gaps.sql',
+  'migrations/0017_qr_code_attempts.sql',
   'seed.sql',
 ]
 

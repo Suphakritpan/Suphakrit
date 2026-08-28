@@ -86,53 +86,76 @@ export async function loadReference() {
 
 /** สถานะหน้าร้านที่เปลี่ยนตลอดเวลา — โหลดใหม่ทุกครั้งที่ realtime แจ้ง */
 export async function loadFloorState() {
-  const [visits, addons, orders, items, requests, queue, payments] = await Promise.all([
+  const [visits, addons, promos, orders, items, requests, queue, payments, tables] = await Promise.all([
     supabase.from('visits').select('*')
       .in('status', ['open', 'awaiting_payment', 'paid']).order('check_in_at'),
     supabase.from('visit_addons').select('*'),
+    supabase.from('visit_promotions').select('*'),
     supabase.from('orders').select('*').order('order_number'),
     supabase.from('order_items').select('*').order('created_at'),
     supabase.from('service_requests').select('*').eq('status', 'open').order('created_at'),
     supabase.from('queue_tickets').select('*')
       .in('status', ['waiting', 'called']).order('ticket_number'),
     supabase.from('payments').select('*').eq('status', 'succeeded'),
+    // สถานะโต๊ะเปลี่ยนตลอดเวลาเหมือน visit — ของเดิมอยู่ใน reference ที่โหลดครั้งเดียว
+    // ผังโต๊ะจึงค้างที่ "กำลังใช้งาน" หลังปิดรอบ จนกว่าจะรีเฟรชหน้าเอง
+    supabase.from('tables').select('*').eq('is_active', true).order('table_number'),
   ])
 
-  const err = [visits, addons, orders, items, requests, queue, payments]
+  const err = [visits, addons, promos, orders, items, requests, queue, payments, tables]
     .find((r) => r.error)?.error
   if (err) throw new Error(err.message)
 
   // ผูก add-on เข้ากับ visit และผูก order_items เข้ากับ order
   const addonsBy = groupBy(addons.data ?? [], 'visit_id')
+  const promosBy = groupBy(promos.data ?? [], 'visit_id')
   const itemsBy = groupBy(items.data ?? [], 'order_id')
 
   return {
-    visits: (visits.data ?? []).map((v) => ({ ...v, addons: addonsBy.get(v.id) ?? [] })),
+    visits: (visits.data ?? []).map((v) => ({
+      ...v,
+      addons: addonsBy.get(v.id) ?? [],
+      promotions: promosBy.get(v.id) ?? [],
+    })),
     orders: (orders.data ?? []).map((o) => ({ ...o, items: itemsBy.get(o.id) ?? [] })),
     serviceRequests: requests.data ?? [],
     queueTickets: queue.data ?? [],
     payments: payments.data ?? [],
+    // ลูกค้าเห็นเฉพาะโต๊ะตัวเอง (RLS read_tables) — ว่างเมื่อยังไม่ได้ join
+    floorTables: tables.data ?? [],
   }
 }
 
-/** ตัวเลขสำหรับหน้าผู้จัดการ — คำนวณจากบิลที่ปิดแล้ววันนี้ */
+/**
+ * ตัวเลขสำหรับหน้าผู้จัดการ — เงินที่รับมาจริงวันนี้
+ *
+ * "ยอดขาย" ต้องมาจากตาราง payments ไม่ใช่ยอดบนบิล
+ * ของเดิมนับเฉพาะ visit ที่ status = 'closed' จึงตกโต๊ะที่จ่ายแล้วแต่ยังไม่ปิดรอบ
+ * (paid → closed เป็นคนละขั้นโดยเจตนา ดู close_visit ใน 0008)
+ * และนับโต๊ะที่ปิดรอบไปแล้วเต็มยอดแม้จ่ายมาแค่บางส่วน
+ */
 export async function loadDashboard(tz = 'Asia/Bangkok') {
   const start = startOfTodayISO(tz)
 
-  const [closed, soldItems] = await Promise.all([
+  const [billed, paid, soldItems] = await Promise.all([
     supabase.from('visits')
       .select('id, total_satang, adult_count, child_count, package_id, package_name_snapshot, check_in_at')
-      .eq('status', 'closed').gte('check_in_at', start),
+      .in('status', ['paid', 'closed']).gte('check_in_at', start),
+    supabase.from('payments')
+      .select('method, amount_satang, completed_at')
+      .eq('status', 'succeeded').gte('completed_at', start),
     supabase.from('order_items')
       .select('name_snapshot, quantity, created_at')
       .gte('created_at', start).neq('status', 'cancelled'),
   ])
 
-  if (closed.error) throw new Error(closed.error.message)
+  if (billed.error) throw new Error(billed.error.message)
+  if (paid.error) throw new Error(paid.error.message)
   if (soldItems.error) throw new Error(soldItems.error.message)
 
-  const bills = closed.data ?? []
-  const sales = bills.reduce((n, b) => n + b.total_satang, 0)
+  const bills = billed.data ?? []
+  const receipts = paid.data ?? []
+  const sales = receipts.reduce((n, p) => n + p.amount_satang, 0)
   const guests = bills.reduce((n, b) => n + b.adult_count + b.child_count, 0)
 
   // เมนูขายดี
@@ -162,6 +185,14 @@ export async function loadDashboard(tz = 'Asia/Bangkok') {
     name, pct: bills.length ? Math.round((n / bills.length) * 100) : 0,
   }))
 
+  // วิธีชำระเงิน — คิดตามยอดเงิน ไม่ใช่จำนวนใบ (บิลละ 20 บาทกับ 2,000 บาทไม่เท่ากัน)
+  const methodTally = new Map()
+  for (const p of receipts) methodTally.set(p.method, (methodTally.get(p.method) ?? 0) + p.amount_satang)
+  const paymentMix = [...methodTally.entries()].map(([method, n]) => ({
+    name: PAYMENT_LABELS[method] ?? method,
+    pct: sales ? Math.round((n / sales) * 100) : 0,
+  }))
+
   return {
     salesTodaySatang: sales,
     guestsToday: guests,
@@ -170,8 +201,15 @@ export async function loadDashboard(tz = 'Asia/Bangkok') {
     hourly,
     topItems,
     packageMix,
-    paymentMix: [],
+    paymentMix,
   }
+}
+
+const PAYMENT_LABELS = {
+  cash: 'เงินสด',
+  qr_promptpay: 'QR พร้อมเพย์',
+  card: 'บัตรเครดิต/เดบิต',
+  transfer: 'โอนเงิน',
 }
 
 // ── helper ──────────────────────────────────────────────────────────────────
@@ -184,7 +222,7 @@ function groupBy(rows, key) {
   return m
 }
 
-function startOfTodayISO(tz) {
+export function startOfTodayISO(tz) {
   const now = new Date()
   const local = new Date(now.toLocaleString('en-US', { timeZone: tz }))
   local.setHours(0, 0, 0, 0)
