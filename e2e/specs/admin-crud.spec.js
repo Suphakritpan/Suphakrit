@@ -1,3 +1,4 @@
+
 import { test, expect } from '@playwright/test'
 import {
   configured, hasWaiter, select, insert, remove, attempt, tag,
@@ -42,9 +43,20 @@ async function login(page, to, email, password) {
 
 const asManager = (page, to) => login(page, to, STAFF_EMAIL, STAFF_PASSWORD)
 
-/** แถวในตารางผู้จัดการไม่มี id ให้เกาะ — เกาะที่ค่าในช่องกรอกของแถวนั้นแทน */
-const rowWith = (page, value) =>
-  page.locator('.data tbody tr').filter({ has: page.locator(`input[value="${value}"]`) }).first()
+/**
+ * แถวในตารางผู้จัดการไม่มี id ให้เกาะ — หาแถวจากค่าในช่องกรอก แล้วจำเป็น "ลำดับที่"
+ *
+ * ห้ามคืน locator ที่ยังผูกกับค่าเดิม เพราะพอแก้ชื่อในช่องนั้น ค่าก็เปลี่ยน
+ * locator เดิมจึงเลิกตรงกับแถวของตัวเอง แล้วปุ่มบันทึกในแถวนั้นก็หาไม่เจอ
+ * (อ่านค่าจาก property ของ DOM ไม่ใช่ attribute — React อัปเดตคนละจังหวะกัน)
+ */
+async function rowWith(page, value) {
+  const rows = page.locator('.data tbody tr')
+  const find = () => rows.evaluateAll(
+    (els, v) => els.findIndex((r) => r.querySelector('input')?.value === v), value)
+  await expect.poll(find, { timeout: 30_000 }).toBeGreaterThanOrEqual(0)
+  return rows.nth(await find())
+}
 
 const one = async (table, query) => (await select(table, query))[0]
 
@@ -81,7 +93,7 @@ test('ผู้จัดการเพิ่ม แก้ ลบเมนูผ
   expect(created.is_available).toBe(true)
 
   // ── แก้ ──────────────────────────────────────────────────────────────────
-  const row = rowWith(page, MENU_NAME)
+  const row = await rowWith(page, MENU_NAME)
   await expect(row).toBeVisible({ timeout: 20_000 })
   await row.locator('input[type="text"], input:not([type])').first().fill(MENU_RENAMED)
   await row.getByRole('button', { name: 'บันทึก' }).click()
@@ -92,7 +104,7 @@ test('ผู้จัดการเพิ่ม แก้ ลบเมนูผ
     .toBe(MENU_RENAMED)
 
   // ── 86 แล้วคืน — ปุ่มเดียวกับที่ครัวใช้จริง ────────────────────────────────
-  const renamed = rowWith(page, MENU_RENAMED)
+  const renamed = await rowWith(page, MENU_RENAMED)
   await renamed.getByRole('button', { name: '86', exact: true }).click()
   await expect
     .poll(async () => (await one('menu_items', `select=is_available&id=eq.${created.id}`))?.is_available,
@@ -150,7 +162,7 @@ test('ผู้จัดการเพิ่มโซนและโต๊ะ �
   expect(table.qr_token).toBeTruthy()     // ฐานข้อมูลต้องออก QR ให้เองตอนสร้าง
 
   // ── แก้ที่นั่ง ────────────────────────────────────────────────────────────
-  const row = rowWith(page, TABLE_NUMBER)
+  const row = await rowWith(page, TABLE_NUMBER)
   await expect(row).toBeVisible({ timeout: 20_000 })
   await row.locator('input[type="number"]').fill('6')
   await row.getByRole('button', { name: 'บันทึก' }).click()
@@ -180,18 +192,19 @@ test('พนักงานที่ไม่ใช่ผู้จัดกา�
     name_th: VICTIM_NAME, is_included_in_buffet: true,
   })
 
-  // ── ผ่านหน้าจอ: กดบันทึกได้ แต่ค่าต้องไม่ลงฐานข้อมูล ──────────────────────
-  // /admin ไม่มีด่านกั้นตาม role โดยตั้งใจ — กฎอยู่ที่ RLS ฝั่งฐานข้อมูล
-  // เทสต์นี้จึงพิสูจน์ว่าด่านจริงกันอยู่ ไม่ใช่แค่ซ่อนปุ่มบนหน้าจอ
-  await login(page, '/admin/menu', WAITER_EMAIL, WAITER_PASSWORD)
-  const row = rowWith(page, VICTIM_NAME)
-  await expect(row).toBeVisible({ timeout: 30_000 })
-  await row.locator('input[type="text"], input:not([type])').first().fill('แก้ได้แปลว่าพัง')
-  await row.getByRole('button', { name: 'บันทึก' }).click()
+  // ── ผ่านหน้าจอ: ต้องเข้าหน้าผู้จัดการไม่ได้ตั้งแต่แรก ─────────────────────
+  // ด่านมีสองชั้นและต้องตรงกัน — หน้าจอไม่ให้เข้า และ RLS ไม่ให้เขียน
+  // ชั้นหน้าจอมีไว้เพราะ RLS กันแค่การเขียน ไม่ได้กันการอ่านทุกอย่าง
+  // ล็อกอินที่หน้าพนักงานตามปกติก่อน แล้วค่อยพิมพ์ URL ของหน้าผู้จัดการเอง
+  // (ตรงกับสถานการณ์จริง — คนที่ล็อกอินอยู่แล้วลองเปิดหน้าที่ไม่ใช่ของตัวเอง)
+  await login(page, '/staff', WAITER_EMAIL, WAITER_PASSWORD)
+  await page.goto('/admin/menu')
+  await expect(page.getByText('หน้านี้สำหรับผู้จัดการเท่านั้น')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.data')).toHaveCount(0)   // ต้องไม่มีตารางเมนูให้เห็นเลย
 
-  // ให้เวลาคำขอเดินทางไป-กลับก่อนอ่านฐานข้อมูล แล้วค่าต้องยังเป็นของเดิม
-  await expect(row.getByRole('button', { name: 'บันทึก' })).toBeEnabled({ timeout: 20_000 })
-  expect((await one('menu_items', `select=name_th&id=eq.${victim.id}`)).name_th).toBe(VICTIM_NAME)
+  // กดปุ่มกลับแล้วต้องไปหน้าพนักงานได้ตามปกติ ไม่ใช่ทางตัน
+  await page.getByRole('button', { name: 'ไปหน้าพนักงาน' }).click()
+  await expect(page.locator('.shell')).toBeVisible({ timeout: 20_000 })
 
   // ── ผ่าน REST ตรง ๆ: insert ต้องถูกปฏิเสธด้วยรหัส 4xx ────────────────────
   const wt = await waiterToken()
@@ -218,6 +231,19 @@ test('พนักงานที่ไม่ใช่ผู้จัดกา�
   // พนักงานยังต้อง "อ่าน" เมนูได้ตามปกติ — ไม่งั้นแปลว่าปิดกว้างเกินไป
   const canRead = await attempt('/rest/v1/menu_items?select=id&limit=1', { token: wt })
   expect(canRead.ok, `พนักงานต้องอ่านเมนูได้ แต่ได้ ${canRead.status}`).toBe(true)
+
+  // ── ยอดค้างของโต๊ะ ต้องไม่เปิดให้คนนอกถามด้วย UUID ────────────────────────
+  // เดิมใครถือ UUID ของรอบไหนก็อ่านยอดของรอบนั้นได้ ทั้งที่ไม่ได้นั่งโต๊ะนั้น
+  const [anyVisit] = await select('visits', 'select=id&limit=1')
+  const byAnon = await attempt('/rest/v1/rpc/visit_amount_due', {
+    method: 'POST', body: { p_visit_id: anyVisit.id },     // ไม่ส่ง token = สิทธิ์ anon
+  })
+  expect(byAnon.ok, `คนนอกต้องถามยอดไม่ได้ แต่ได้ ${byAnon.status}`).toBe(false)
+
+  const byManager = await attempt('/rest/v1/rpc/visit_amount_due', {
+    token: await staffToken(), method: 'POST', body: { p_visit_id: anyVisit.id },
+  })
+  expect(byManager.ok, `พนักงานต้องถามยอดได้ แต่ได้ ${byManager.status}`).toBe(true)
 
   // และผู้จัดการต้องแก้ได้อยู่ — ไม่งั้นเทสต์ข้างบนผ่านเพราะ RLS พังทั้งระบบ
   const okMenu = await attempt(`/rest/v1/menu_items?id=eq.${victim.id}`, {

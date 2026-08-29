@@ -55,13 +55,34 @@ async function seat() {
 }
 
 /** มือถือลูกค้าอีกเครื่องหนึ่ง — คนละ context = คนละเบราว์เซอร์ในทางปฏิบัติ */
-async function customerDevice(browser, baseURL, visit, categoryName) {
+async function customerDevice(browser, baseURL, table, visit, categoryName) {
   const ctx = await browser.newContext({
     baseURL, storageState: STATE_FILE, locale: 'th-TH', timezoneId: 'Asia/Bangkok',
   })
   const page = await ctx.newPage()
+
+  // ล้างโต๊ะที่เครื่องนี้เคยจำไว้ก่อน ไม่งั้นอาจเด้งเข้าโต๊ะของรอบก่อน
+  await page.goto('/')
+  await page.evaluate(() => localStorage.removeItem('shabu.visit'))
+
+  // ต้องรอให้เข้าโต๊ะสำเร็จก่อนค่อยไปหน้าเมนู — เปลี่ยนหน้าเร็วกว่านั้น
+  // แอปยังไม่รู้ว่าอยู่โต๊ะไหน แล้วหน้าเมนูจะว่างเปล่าโดยไม่มีแถบหมวด
+  //
+  // ยอมให้ลองซ้ำหนึ่งครั้ง เพราะทุก context ในชุดนี้ใช้ session ผู้เยี่ยมชมใบเดียวกัน
+  // (ตั้งใจ เพื่อไม่ให้ชนเพดานการสมัคร anonymous ของ Supabase)
+  // แต่ Supabase หมุน refresh token ทุกครั้งที่ต่ออายุ เครื่องที่หยิบใบเก่าไปพอดี
+  // จะเข้าโต๊ะไม่ผ่านรอบแรก ซึ่งเป็นข้อจำกัดของวิธีแชร์ session ไม่ใช่บั๊กของร้าน
+  const seated = page.getByText(`โต๊ะ ${table.table_number}`).first()
   await page.goto(`/v/${visit.session_token}`)
+  try {
+    await expect(seated).toBeVisible({ timeout: 30_000 })
+  } catch {
+    await page.goto(`/v/${visit.session_token}`)
+    await expect(seated).toBeVisible({ timeout: 30_000 })
+  }
+
   await page.goto('/order/menu')
+  await expect(page.locator('.tabbar')).toBeVisible({ timeout: 30_000 })
   await page.locator('.tabbar button').filter({ hasText: categoryName }).first().click()
   return { ctx, page }
 }
@@ -86,9 +107,9 @@ test('พนักงานกด 86 จากอีกเครื่อง ม
   test.skip(!stateHasSession(), 'ไม่มี session ผู้เยี่ยมชม (anonymous sign-in ใช้ไม่ได้) — ทางเข้าลูกค้าทดสอบไม่ได้')
 
   const { item, cat } = await ownMenuItem('เนื้อทดสอบเรียลไทม์')
-  const { visit } = await seat()
+  const { table, visit } = await seat()
 
-  const guest = await customerDevice(browser, baseURL, visit, cat.name_th)
+  const guest = await customerDevice(browser, baseURL, table, visit, cat.name_th)
   const staff = await staffDevice(browser, baseURL, '/admin/menu')
 
   try {
@@ -133,9 +154,9 @@ test('เน็ตหลุดระหว่างมื้อแล้วก�
   test.skip(!stateHasSession(), 'ไม่มี session ผู้เยี่ยมชม (anonymous sign-in ใช้ไม่ได้) — ทางเข้าลูกค้าทดสอบไม่ได้')
 
   const { item, cat } = await ownMenuItem('ผักทดสอบรีคอนเนกต์')
-  const { visit } = await seat()
+  const { table, visit } = await seat()
 
-  const guest = await customerDevice(browser, baseURL, visit, cat.name_th)
+  const guest = await customerDevice(browser, baseURL, table, visit, cat.name_th)
 
   try {
     const row = guest.page.locator('.mrow').filter({ hasText: item.name_th }).first()
@@ -143,15 +164,19 @@ test('เน็ตหลุดระหว่างมื้อแล้วก�
     await expect(row).not.toHaveClass(/mrow--off/)
 
     // ── เน็ตหลุด แล้วของหมดระหว่างที่หลุดอยู่ ────────────────────────────────
-    // event ที่เกิดตอนหลุดจะไม่มีส่งย้อนหลัง ตอนต่อกลับได้จึงต้องโหลดใหม่ทั้งชุด
+    // event ที่เกิดตอนหลุดจะไม่มีส่งย้อนหลัง ตอนต่อกลับได้จึงต้องตามให้ทันเอง
+    //
+    // ตั้งใจไม่ยืนยันว่า "ระหว่างหลุดจอต้องยังไม่รู้" เพราะ setOffline ของเบราว์เซอร์
+    // ไม่ได้ตัด websocket ที่เปิดค้างอยู่เสมอไป บางรอบ event จึงเล็ดลอดเข้ามาได้
+    // นั่นคือพฤติกรรมของตัวจำลองเน็ต ไม่ใช่กติกาของร้าน เอามาตัดสินถูกผิดไม่ได้
+    // สิ่งที่ร้านต้องการจริงมีข้อเดียว: พอเน็ตกลับมา จอต้องตรงกับฐานข้อมูล
     await guest.ctx.setOffline(true)
     await patch('menu_items', `id=eq.${item.id}`, { is_available: false })
     await guest.page.waitForTimeout(3_000)
-    await expect(row).not.toContainText('ของหมด')    // ยังไม่รู้ เพราะเน็ตหลุดอยู่
 
-    // ── ต่อเน็ตกลับ ต้องตามทันเอง ────────────────────────────────────────────
+    // ── ต่อเน็ตกลับ ต้องตามทันเอง ไม่มี reload ในเทสต์นี้เลย ─────────────────
     await guest.ctx.setOffline(false)
-    await expect(row).toContainText('ของหมด', { timeout: 90_000 })
+    await expect(row).toContainText('ของหมด', { timeout: 60_000 })
     await expect(row.getByLabel('เพิ่มจำนวน')).toBeDisabled()
   } finally {
     await guest.ctx.close()
@@ -162,14 +187,14 @@ test('เน็ตหลุดระหว่างมื้อแล้วก�
 test('สองเครื่องที่โต๊ะเดียวกันกดสั่งพร้อมกัน ต้องเข้ารอบของโต๊ะเดิมและไม่ชนกัน', async ({ browser, baseURL }) => {
   test.skip(!stateHasSession(), 'ไม่มี session ผู้เยี่ยมชม (anonymous sign-in ใช้ไม่ได้) — ทางเข้าลูกค้าทดสอบไม่ได้')
 
-  const { visit } = await seat()
+  const { table, visit } = await seat()
   const [cat] = await select('menu_categories', 'select=id,name_th&limit=1')
   const menu = await select('menu_items',
     `select=id,name_th&category_id=eq.${cat.id}&is_available=eq.true&is_included_in_buffet=eq.true&limit=2`)
   test.skip(menu.length < 2, 'หมวดนี้มีเมนูที่สั่งได้ไม่ถึงสองรายการ')
 
-  const a = await customerDevice(browser, baseURL, visit, cat.name_th)
-  const b = await customerDevice(browser, baseURL, visit, cat.name_th)
+  const a = await customerDevice(browser, baseURL, table, visit, cat.name_th)
+  const b = await customerDevice(browser, baseURL, table, visit, cat.name_th)
 
   try {
     const pick = async (dev, name) => {
