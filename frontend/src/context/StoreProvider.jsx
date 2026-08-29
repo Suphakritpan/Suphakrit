@@ -217,7 +217,7 @@ function reducer(state, action) {
       return {
         ...state,
         menuItems: state.menuItems.map((m) =>
-          m.id === action.menuId ? { ...m, is_available: !m.is_available } : m),
+          m.id === action.menuId ? { ...m, is_available: action.next ?? !m.is_available } : m),
       }
 
     case 'TOAST':
@@ -235,8 +235,35 @@ export function StoreProvider({ children }) {
   const [mode, setMode] = useState('probing')
   const [conn, setConn] = useState({ status: 'idle', reason: null })
   const [reference, setReference] = useState(null)
+
+  // สำเนาล่าสุดของ reference ที่อ่านได้จากใน callback โดยไม่ติดค่าเก่า
+  //
+  // dispatch กับปุ่มบนหน้าจอถูกสร้างขึ้นในรอบ render หนึ่ง ๆ แล้วจำค่า ณ ตอนนั้นไว้
+  // พอกด 86 แล้วกดคืนติด ๆ กัน ปุ่มที่กดครั้งที่สองอาจยังถือค่าจากก่อนกดครั้งแรก
+  // แล้วคำนวณสถานะปลายทางผิด กลายเป็นสั่ง "ให้หมด" ซ้ำแทนที่จะคืนของ
+  const referenceRef = useRef(null)
+  useEffect(() => { referenceRef.current = reference }, [reference])
+
+  /**
+   * ตัวนับการเขียนข้อมูลอ้างอิงจากเครื่องนี้ — ใช้ทิ้งผลโหลดที่ล้าสมัย
+   *
+   * โหลดชุดอ้างอิงที่ยิงออกไปก่อนที่การอัปเดตจะ commit จะกลับมาพร้อมค่าเก่า
+   * ถ้าปล่อยให้เขียนทับ ปุ่ม 86/คืน จะสลับป้ายกลับไปมาเอง แล้วคนกดครั้งถัดไป
+   * โดนปุ่มที่ความหมายเปลี่ยนไปแล้ว (เห็นจริงใน audit log: ส่ง 86 ซ้ำสองครั้ง)
+   */
+  const refWrite = useRef(0)
+
+  /** โหลดชุดอ้างอิงใหม่ แล้วเขียนลง state เฉพาะเมื่อไม่มีการเขียนแทรกระหว่างรอ */
+  const refreshReference = useCallback(async () => {
+    const seq = refWrite.current
+    try {
+      const next = await loadReference()
+      if (refWrite.current === seq) setReference(next)
+    } catch { /* โหลดไม่ได้ก็ใช้ของเดิมต่อ ไม่ต้องทำทั้งหน้าดับ */ }
+  }, [])
   const [dash, setDash] = useState(demo.dashboard)
   const refreshing = useRef(false)
+  const pendingRefresh = useRef(false)
 
   // ── ตัวตน ─────────────────────────────────────────────────────────────────
   // session = ทั้งพนักงานที่ล็อกอิน และลูกค้าที่ได้ anonymous session จากการสแกน QR
@@ -341,13 +368,21 @@ export function StoreProvider({ children }) {
   // ตัวเลขแดชบอร์ดต้องโหลดคู่กันเสมอ ไม่งั้นเก็บเงินแล้วยอดขายยังเป็นของเก่าจนกว่าจะรีเฟรชหน้า
   const tz = reference?.settings?.timezone ?? 'Asia/Bangkok'
   const refresh = useCallback(async () => {
-    if (refreshing.current) return
+    // มีรอบที่กำลังโหลดอยู่แล้ว — จดไว้ว่ามีคนขอเพิ่ม แล้วโหลดต่ออีกรอบเมื่อรอบนี้จบ
+    //
+    // ของเดิมทิ้งคำขอนั้นไปเลย ผลคือ event ที่มาถึงระหว่างกำลังโหลดอยู่จะหายไป
+    // เช่นเปิดโต๊ะจากอีกเครื่องพอดีกับที่จอนี้กำลังโหลดชุดก่อนหน้า
+    // ผังโต๊ะจะค้างเป็น "ว่าง" ทั้งที่ฐานข้อมูลเปลี่ยนแล้ว จนกว่าจะมี event ถัดไป
+    if (refreshing.current) { pendingRefresh.current = true; return }
     refreshing.current = true
     try {
-      const floor = await loadFloorState()
-      rawDispatch({ type: 'HYDRATE', data: floor })
-      setHydrated(true)
-      loadDashboard(tz).then(setDash).catch(() => {})
+      do {
+        pendingRefresh.current = false
+        const floor = await loadFloorState()
+        rawDispatch({ type: 'HYDRATE', data: floor })
+        setHydrated(true)
+        loadDashboard(tz).then(setDash).catch(() => {})
+      } while (pendingRefresh.current)
     } catch (e) {
       setConn({ status: 'error', reason: e.message })
     } finally {
@@ -363,7 +398,11 @@ export function StoreProvider({ children }) {
       (info) => {
         // เมนูอยู่ใน reference ไม่ใช่ floor state — กด 86 แล้วต้องโหลดชุดอ้างอิงใหม่
         // ไม่งั้นมือถือลูกค้าที่เปิดค้างยังเห็นเมนูที่หมดไปแล้วจนกว่าจะ reload
-        if (info?.table === 'menu_items') loadReference().then(setReference).catch(() => {})
+        //
+        // ห้ามโหลด reference ตอน resync: resync เกิดทุกครั้งที่ต่อ channel ใหม่
+        // และการโหลด reference ใหม่ก็ทำให้ต่อ channel ใหม่อีก กลายเป็นวนไม่จบ
+        // กรณีเน็ตหลุดแล้วเมนูเปลี่ยนระหว่างนั้น ใช้ตัวดักเหตุการณ์ online ข้างล่างแทน
+        if (info?.table === 'menu_items') refreshReference()
         refresh()
       },
       (status) => {
@@ -374,7 +413,34 @@ export function StoreProvider({ children }) {
       },
     )
     return stop
-  }, [mode, refresh, reference])
+    // reference อยู่ใน deps ทั้งที่ effect ไม่ได้ใช้ตรง ๆ — ตั้งใจให้เป็นแบบนี้
+    // เพราะการโหลด reference เสร็จคือจังหวะที่ต้อง refresh() ซ้ำอีกรอบ
+    // (รอบแรกยิงตั้งแต่ยังไม่มีข้อมูลอ้างอิง ถ้าพลาดแล้วไม่มีใครลองใหม่ให้)
+    // การวนซ้ำจากการ resync กันไว้ที่ subscribeFloor แล้ว — ดู realtime.js
+  }, [mode, refresh, reference, refreshReference])
+
+  // ── ตาข่ายรับ: เน็ตสะดุดสั้น ๆ แล้วกลับมา ────────────────────────────────
+  //
+  // Postgres Changes ไม่ส่ง event ย้อนหลัง ของที่เปลี่ยนตอนเน็ตหลุดจึงหายไปเลย
+  // ปกติจะกู้คืนตอน websocket ต่อกลับได้ (resync) แต่ถ้าเน็ตสะดุดสั้นจนซ็อกเก็ต
+  // ไม่ทันรู้ตัว จะไม่มี resync ให้เลย แล้วมือถือค้างอยู่กับข้อมูลเก่าตลอดไป
+  // ซึ่งเกิดตลอดเวลาบนมือถือจริง (เดินสลับ wifi กับ 4G, ล็อกจอแล้วกลับมาเปิด)
+  //
+  // จึงอาศัยสัญญาณของเบราว์เซอร์เองเป็นตัวกระตุ้นให้โหลดใหม่ ไม่ต้องพึ่ง realtime
+  useEffect(() => {
+    if (mode !== 'live') return
+
+    // ดักเฉพาะ online: เป็นสัญญาณที่ตรงกับเรื่องนี้ที่สุด และเกิดไม่บ่อย
+    // เคยดัก visibilitychange ด้วย แต่มันยิงบ่อยจนโหลดข้อมูลอ้างอิงใหม่ถี่เกินไป
+    // แล้วการโหลดใหม่แต่ละครั้งทำให้ต่อ channel ใหม่ event ช่วงนั้นเลยหายไปแทน
+    const catchUp = () => {
+      refresh()
+      refreshReference()
+    }
+
+    window.addEventListener('online', catchUp)
+    return () => window.removeEventListener('online', catchUp)
+  }, [mode, refresh, refreshReference])
 
   // ── dispatch เดียวใช้ได้ทั้งสองโหมด ───────────────────────────────────────
   // หน้าจอเรียก dispatch เหมือนเดิมทุกที่ ไม่ต้องรู้ว่าอยู่โหมดไหน
@@ -471,14 +537,30 @@ export function StoreProvider({ children }) {
 
         case 'TOGGLE_MENU': {
           // โหมด live เมนูอยู่ใน reference ไม่ใช่ state — หยิบผิดที่แล้ว m เป็น undefined
-          const m = (reference?.menuItems ?? state.menuItems).find((x) => x.id === action.menuId)
-          if (!m) break
-          await api.setMenuAvailability(action.menuId, !m.is_available)
-          setReference((r) => ({
+          //
+          // ต้องอ่านผ่าน referenceRef ไม่ใช่ตัวแปร reference ที่ฟังก์ชันนี้จับไว้ตอนถูกสร้าง
+          // ไม่งั้นกด 86 แล้วกดคืนติด ๆ กัน ค่าที่อ่านได้ยังเป็นค่าก่อนกดครั้งแรก
+          // แล้วคำนวณสถานะปลายทางผิด กลายเป็นสั่ง "ให้หมด" ซ้ำ เมนูไม่กลับมาสักที
+          const src = referenceRef.current?.menuItems ?? reference?.menuItems ?? state.menuItems
+          const m = src.find((x) => x.id === action.menuId)
+          if (!m && action.next == null) break
+
+          const next = action.next ?? !m.is_available
+
+          // นับการเขียนไว้ก่อนยิง เพื่อให้ผลโหลดชุดอ้างอิงที่ค้างอยู่ก่อนหน้าถูกทิ้ง
+          // ไม่งั้นมันจะกลับมาเขียนทับด้วยค่าก่อนกด แล้วปุ่มสลับป้ายกลับเอง
+          refWrite.current++
+          const saved = await api.setMenuAvailability(action.menuId, next)
+          refWrite.current++
+
+          // ใช้ค่าที่ฐานข้อมูลคืนกลับมา ไม่ใช่ค่าที่เราเดาไว้ — RPC คืนแถวที่อัปเดตแล้ว
+          const confirmed = saved?.is_available ?? next
+          // r เป็น null ได้ถ้ากดก่อนชุดอ้างอิงโหลดเสร็จ — ไม่มีอะไรให้แก้ ปล่อยผ่าน
+          setReference((r) => (r ? {
             ...r,
             menuItems: r.menuItems.map((x) =>
-              x.id === action.menuId ? { ...x, is_available: !x.is_available } : x),
-          }))
+              x.id === action.menuId ? { ...x, is_available: confirmed } : x),
+          } : r))
           break
         }
 
@@ -537,6 +619,9 @@ export function StoreProvider({ children }) {
 
   // หน้าผู้จัดการแก้ราคา/เมนู/โต๊ะแล้วต้องเห็นผลทันทีทุกจอ โดยไม่ต้องรีเฟรชหน้า
   const reloadReference = useCallback(async () => {
+    // ตัวนี้ผู้ใช้สั่งโหลดเองหลังบันทึกข้อมูล จึงถือว่าเป็นค่าล่าสุดเสมอ
+    // แต่ต้องนับเป็นการเขียนด้วย ไม่งั้นผลโหลดที่ค้างอยู่ก่อนหน้าจะมาเขียนทับทีหลัง
+    refWrite.current++
     const ref = await loadReference()
     setReference(ref)
     return ref

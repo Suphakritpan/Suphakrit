@@ -164,6 +164,8 @@ function MenuRow({ item, store, busy, run }) {
       <td className="num">
         <span className="row g8" style={{ justifyContent: 'flex-end' }}>
           <button className="btn btn--default btn--sm" disabled={busy} onClick={save}>บันทึก</button>
+          {/* ไม่ส่งสถานะปลายทางไปเอง — ปุ่มนี้ถือค่าจากรอบ render ที่อาจเก่าไปแล้ว
+              ให้ StoreProvider อ่านค่าล่าสุดผ่าน referenceRef แล้วสลับเอง */}
           <button className={`btn btn--sm ${item.is_available ? 'btn--quiet' : 'btn--primary'}`}
                   onClick={() => store.dispatch({ type: 'TOGGLE_MENU', menuId: item.id })}>
             {item.is_available ? '86' : 'คืน'}
