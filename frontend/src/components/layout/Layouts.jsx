@@ -110,6 +110,26 @@ const ADMIN_NAV = [
   { to: '/admin/settings',   icon: 'settings', label: 'ตั้งค่าร้าน' },
 ]
 
+/** ตรงกับ is_manager() ในฐานข้อมูล — enum staff_role มี owner · manager · staff · kitchen · cashier */
+const MANAGER_ROLES = ['owner', 'manager']
+
+/** พนักงานที่ไม่ใช่ผู้จัดการเปิดหน้าผู้จัดการ — บอกให้ชัดว่าเข้าไม่ได้เพราะอะไร */
+function NotManager({ name }) {
+  const nav = useNavigate()
+  return (
+    <div className="cx__wrap" style={{ paddingTop: 96, maxWidth: 420, margin: '0 auto', textAlign: 'center' }}>
+      <Empty
+        icon="lock"
+        title="หน้านี้สำหรับผู้จัดการเท่านั้น"
+        hint={`บัญชี${name ? ` ${name}` : 'ของคุณ'}เป็นพนักงานหน้าร้าน ถ้าต้องใช้หน้านี้ให้ผู้จัดการเปลี่ยนสิทธิ์ให้`}
+      />
+      <button className="btn btn--primary" style={{ marginTop: 18 }} onClick={() => nav('/staff')}>
+        ไปหน้าพนักงาน
+      </button>
+    </div>
+  )
+}
+
 export function ConsoleLayout({ kind }) {
   const store = useStore()
   const items = kind === 'admin' ? ADMIN_NAV : STAFF_NAV
@@ -123,6 +143,15 @@ export function ConsoleLayout({ kind }) {
   if (store.mode === 'live') {
     if (store.profile === undefined) return <Loading label="กำลังตรวจสอบสิทธิ์…" />
     if (store.profile === null) return <Login kind={kind} />
+
+    // หน้าผู้จัดการเปิดได้เฉพาะเจ้าของร้านกับผู้จัดการ ให้ตรงกับ is_manager() ที่ RLS ใช้
+    //
+    // ฐานข้อมูลกันการ "แก้" ไว้แน่นแล้ว แต่ไม่ได้กันการ "อ่าน" ทั้งหมด
+    // พนักงานหน้าร้านที่เปิดหน้านี้จึงเห็นเบอร์ลูกค้าและรายชื่อพนักงานได้
+    // กันที่นี่อีกชั้นเพื่อให้สิ่งที่เห็นบนจอตรงกับสิทธิ์จริง
+    if (kind === 'admin' && !MANAGER_ROLES.includes(store.profile.role)) {
+      return <NotManager name={store.profile.full_name} />
+    }
   }
 
   const counts = {
