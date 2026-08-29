@@ -57,23 +57,37 @@ export async function listVisitsToday(tz) {
     .gte('check_in_at', startOfTodayISO(tz)).order('check_in_at', { ascending: false }))
 }
 
-/** รายละเอียดของรอบเดียว — ใช้ตอน drill-down จากตารางภาพรวม */
+/**
+ * รายละเอียดของรอบเดียว — ใช้ตอน drill-down จากตารางภาพรวม
+ *
+ * ⚠️ ห้ามดึง order_items ทั้งตารางแล้วมากรองฝั่งเบราว์เซอร์
+ *    PostgREST ตัดผลลัพธ์ที่ 1000 แถวโดยไม่แจ้ง error พอร้านสั่งเกินหนึ่งพันรายการ
+ *    รอบล่าสุดจะหลุดออกจากผลลัพธ์ แล้วหน้านี้แสดงอาหารไม่ครบทั้งที่บิลเก็บเงินไปแล้ว
+ *    ซึ่งเป็นหน้าที่ผู้จัดการใช้ตรวจเงินย้อนหลัง
+ *
+ * ยิงสองจังหวะแทน เพราะต้องรู้ id ของออเดอร์ก่อนถึงจะกรองรายการอาหารได้
+ */
 export async function visitDetail(visitId) {
-  const [orders, items, lines, payments, promos, addons] = await Promise.all([
+  const [orders, lines, payments, promos, addons] = await Promise.all([
     supabase.from('orders').select('*').eq('visit_id', visitId).order('order_number'),
-    supabase.from('order_items').select('*').order('created_at'),
     supabase.from('bill_lines').select('*').eq('visit_id', visitId).order('sort_order'),
     supabase.from('payments').select('*').eq('visit_id', visitId).order('created_at'),
     supabase.from('visit_promotions').select('*').eq('visit_id', visitId),
     supabase.from('visit_addons').select('*').eq('visit_id', visitId),
   ])
-  const orderIds = new Set((orders.data ?? []).map((o) => o.id))
+
+  const orderIds = (orders.data ?? []).map((o) => o.id)
+  const items = orderIds.length
+    ? await supabase.from('order_items').select('*').in('order_id', orderIds).order('created_at')
+    : { data: [] }
+  const rows = items.data ?? []
+
   return {
     orders: (orders.data ?? []).map((o) => ({
-      ...o, items: (items.data ?? []).filter((i) => i.order_id === o.id),
+      ...o, items: rows.filter((i) => i.order_id === o.id),
     })),
-    // order_items ของ visit อื่นถูกกรองทิ้งตรงนี้ (กรองด้วย in() ไม่ได้เมื่อไม่มีออเดอร์)
-    itemCount: (items.data ?? []).filter((i) => orderIds.has(i.order_id)).length,
+    // กรองมาจากฐานข้อมูลแล้ว ทุกแถวที่ได้มาเป็นของรอบนี้ล้วน
+    itemCount: rows.length,
     billLines: lines.data ?? [],
     payments: payments.data ?? [],
     promotions: promos.data ?? [],

@@ -84,23 +84,48 @@ export async function loadReference() {
   }
 }
 
-/** สถานะหน้าร้านที่เปลี่ยนตลอดเวลา — โหลดใหม่ทุกครั้งที่ realtime แจ้ง */
+/**
+ * สถานะหน้าร้านที่เปลี่ยนตลอดเวลา — โหลดใหม่ทุกครั้งที่ realtime แจ้ง
+ *
+ * ⚠️ ทุกตารางที่โตไม่หยุดต้องผูกกับ "รอบที่ยังไม่ปิด" เสมอ ห้ามดึงทั้งตาราง
+ *    PostgREST ตัดผลลัพธ์ที่ 1000 แถวโดยไม่แจ้ง error (ยืนยันแล้วกับฐานข้อมูลจริง)
+ *    ของเดิมดึง orders / order_items / payments / visit_addons / visit_promotions
+ *    ทั้งตารางโดยไม่กรอง พอร้านสั่งครบ 1000 รอบ ตั๋วที่เกินมาจะหายเงียบ ๆ
+ *    จอครัวไม่ขึ้นอาหารที่ลูกค้าสั่ง โดยไม่มีอะไรฟ้องว่าข้อมูลถูกตัด
+ *
+ * ยอมยิงสามจังหวะแทนจังหวะเดียว เพราะต้องรู้ id ของรอบก่อนถึงจะกรองได้
+ */
 export async function loadFloorState() {
-  const [visits, addons, promos, orders, items, requests, queue, payments, tables] = await Promise.all([
+  const [visits, requests, queue, tables] = await Promise.all([
     supabase.from('visits').select('*')
       .in('status', ['open', 'awaiting_payment', 'paid']).order('check_in_at'),
-    supabase.from('visit_addons').select('*'),
-    supabase.from('visit_promotions').select('*'),
-    supabase.from('orders').select('*').order('order_number'),
-    supabase.from('order_items').select('*').order('created_at'),
     supabase.from('service_requests').select('*').eq('status', 'open').order('created_at'),
     supabase.from('queue_tickets').select('*')
       .in('status', ['waiting', 'called']).order('ticket_number'),
-    supabase.from('payments').select('*').eq('status', 'succeeded'),
     // สถานะโต๊ะเปลี่ยนตลอดเวลาเหมือน visit — ของเดิมอยู่ใน reference ที่โหลดครั้งเดียว
     // ผังโต๊ะจึงค้างที่ "กำลังใช้งาน" หลังปิดรอบ จนกว่าจะรีเฟรชหน้าเอง
     supabase.from('tables').select('*').eq('is_active', true).order('table_number'),
   ])
+
+  const headErr = [visits, requests, queue, tables].find((r) => r.error)?.error
+  if (headErr) throw new Error(headErr.message)
+
+  const visitIds = (visits.data ?? []).map((v) => v.id)
+  const none = { data: [], error: null }
+
+  const [addons, promos, orders, payments] = visitIds.length
+    ? await Promise.all([
+        supabase.from('visit_addons').select('*').in('visit_id', visitIds),
+        supabase.from('visit_promotions').select('*').in('visit_id', visitIds),
+        supabase.from('orders').select('*').in('visit_id', visitIds).order('order_number'),
+        supabase.from('payments').select('*').eq('status', 'succeeded').in('visit_id', visitIds),
+      ])
+    : [none, none, none, none]
+
+  const orderIds = (orders.data ?? []).map((o) => o.id)
+  const items = orderIds.length
+    ? await supabase.from('order_items').select('*').in('order_id', orderIds).order('created_at')
+    : none
 
   const err = [visits, addons, promos, orders, items, requests, queue, payments, tables]
     .find((r) => r.error)?.error
