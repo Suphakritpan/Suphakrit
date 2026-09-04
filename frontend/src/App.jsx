@@ -5,6 +5,7 @@ import { CustomerLayout, ConsoleLayout } from './components/layout/Layouts'
 import Landing from './pages/Landing'
 import Join from './pages/Join'
 import QueueStatus from './pages/QueueStatus'
+import Display from './pages/Display'
 
 import CustomerHome from './pages/customer/Home'
 import CustomerMenu from './pages/customer/Menu'
@@ -35,6 +36,9 @@ export default function App() {
 
           {/* QR บนบัตรคิว — เปิดได้โดยไม่ต้องล็อกอิน */}
           <Route path="/q/:token" element={<QueueStatus />} />
+
+          {/* จอคิวหน้าร้าน — เปิดค้างบนทีวี ล็อกอินด้วยบัญชีพนักงาน ไม่มีแถบนำทาง */}
+          <Route path="/display" element={<Display />} />
 
           {/* ฝั่งลูกค้า — ของจริงเข้าผ่าน /v/:token จาก QR บนสลิป */}
           <Route path="/order" element={<CustomerLayout />}>
