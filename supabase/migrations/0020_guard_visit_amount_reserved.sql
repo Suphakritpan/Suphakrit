@@ -1,0 +1,47 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- 0020 — ใส่ด่านให้ visit_amount_reserved() ซึ่งเป็นตัวที่ 0018/0019 มองข้าม
+--
+-- 0018 ไล่ปิด visit_amount_due() เพราะใครถือ UUID ของรอบไหนก็อ่านยอดค้างได้
+-- แต่ visit_amount_reserved() ซึ่งอ่านยอดจากตารางเดียวกันด้วยเงื่อนไขที่กว้างกว่า
+-- (นับ pending ด้วย ไม่ใช่แค่ succeeded) กลับไม่ได้ถูกไล่ปิดไปพร้อมกัน
+--
+-- ยิงทดสอบผ่านอินเทอร์เน็ตจริงแล้วยืนยันว่าเปิดอยู่:
+--   ผู้ใช้ที่สมัคร anonymous เอง เรียก /rest/v1/rpc/visit_amount_reserved
+--   ด้วย id ของรอบ A3-0829-004 → ได้ 74700 กลับมาเป็นตัวเลขยอดเงินจริง
+--   ขณะที่ visit_amount_due ด้วย id เดียวกัน → 42501 ตามที่ 0019 ปิดไว้
+--
+-- ด่านที่ใส่คือตัวเดียวกับ 0019 ทุกตัวอักษร รวม coalesce ที่ครอบทั้งก้อน
+-- ซึ่งเป็นจุดที่ 0018 พลาดจนด่านไม่เคยยิงสำหรับผู้ที่ควรถูกกันมากที่สุด
+-- (current_visit_id() คืน null สำหรับคนที่ไม่ได้นั่งโต๊ะไหน แล้ว null or false
+--  ได้ null ไม่ใช่ false พอเข้า not ก็ยังเป็น null และ if null then ไม่เข้าเงื่อนไข)
+--
+-- ⚠️ สูตรคิดยอดห้ามแก้แม้แต่ตัวอักษรเดียว — trg_payment_reserve_guard บน payments
+--    เรียกฟังก์ชันนี้เพื่อกันสร้างใบชำระซ้อนเกินยอดบิล ถ้าค่าเปลี่ยนคือด่านนั้นเพี้ยนตาม
+--    และต้องคืน 0 เมื่อไม่พบรอบ (ไม่ใช่ null) เพราะผู้เรียกเทียบค่าตรง ๆ ไม่ได้เช็ค null
+--
+-- ไม่แตะสิทธิ์ execute เลยในไฟล์นี้ — ตรวจแล้วว่า anon ได้ 401 อยู่แล้ว
+-- แปลว่า PUBLIC ไม่มี execute ติดมาแบบที่ 0019 เจอ และ create or replace
+-- ไม่รีเซ็ต grant เดิม จึงไม่มีอะไรต้องถอนเพิ่ม
+-- ════════════════════════════════════════════════════════════════════════════
+
+create or replace function visit_amount_reserved(p_visit_id uuid)
+returns integer
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_reserved integer;
+begin
+  -- ลูกค้ารู้ UUID ของรอบตัวเองอยู่แล้ว หน้าจอที่โต๊ะใช้เรียกดูยอดของตัวเอง
+  -- แต่ต้องไม่ให้เอา UUID ของโต๊ะอื่นมาถามได้
+  if not coalesce(is_staff() or p_visit_id = current_visit_id(), false) then
+    raise exception 'ไม่มีสิทธิ์ดูยอดของรอบนี้' using errcode = '42501';
+  end if;
+
+  -- สูตรเดิมจาก 0014 ห้ามแก้ — นับทั้ง pending และ succeeded และคืน 0 เมื่อไม่พบรอบ
+  select coalesce(sum(amount_satang), 0)::integer
+    into v_reserved
+    from payments
+   where visit_id = p_visit_id and status in ('pending', 'succeeded');
+
+  return v_reserved;
+end;
+$$;
