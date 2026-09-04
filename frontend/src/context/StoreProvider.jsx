@@ -282,15 +282,23 @@ export function StoreProvider({ children }) {
     return api.onAuthChange(setSession)
   }, [])
 
+  // ผูกกับ id ของผู้ใช้ ไม่ใช่ตัว session
+  //
+  // onAuthStateChange ส่ง object ใหม่ทุก event รวมถึง TOKEN_REFRESHED ที่ต่ออายุ token
+  // เองเป็นระยะ และ supabase-js ยัง sync event ข้าม tab ให้ด้วย
+  // ถ้าผูกกับ session ตรง ๆ effect จะวิ่งใหม่ทุกครั้งแล้วล้าง profile เป็น undefined
+  // ทั้งที่ตัวตนไม่ได้เปลี่ยน — คอนโซลกระพริบเป็น "กำลังตรวจสอบสิทธิ์…" เอง
+  // และจอคิวหน้าร้านที่เปิดค้างบนทีวีก็ดับเป็นหน้าโหลดตามไปด้วย
+  const authUserId = session?.user?.id ?? null
   useEffect(() => {
-    if (!session) { setProfile(null); return }
+    if (!authUserId) { setProfile(null); return }
     let alive = true
     setProfile(undefined)
     api.currentProfile()
       .then((p) => { if (alive) setProfile(p ?? null) })
       .catch(() => { if (alive) setProfile(null) })
     return () => { alive = false }
-  }, [session])
+  }, [authUserId])
 
   // ── ตรวจว่าฐานข้อมูลพร้อมไหม แล้วเลือกโหมด ────────────────────────────────
   //
