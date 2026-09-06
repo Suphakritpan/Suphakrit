@@ -76,14 +76,24 @@ console.log('\n── C-1 staff สองคน advance รายการเด
 
   const a = await conn(), b = await conn()
   await asStaff(a, staff.id); await asStaff(b, staff.id)
+  // กันแขวนถาวร: รอล็อกเกิน 5 วินาทีให้ล้มไปเลย ดีกว่าค้างเทอร์มินัลไว้เงียบ ๆ
+  await a.query(`set lock_timeout = '5s'`); await b.query(`set lock_timeout = '5s'`)
 
   // เริ่ม transaction ทั้งคู่ก่อน แล้วค่อยยิงพร้อมกัน ให้ชนกันจริงที่ระดับ row lock
   await a.query('begin'); await b.query('begin')
-  const results = await Promise.allSettled([
-    a.query(`select * from advance_order_item($1,'preparing')`, [item.id]),
-    b.query(`select * from advance_order_item($1,'preparing')`, [item.id]),
-  ])
-  await Promise.allSettled([a.query('commit'), b.query('commit')])
+  const pa = a.query(`select * from advance_order_item($1,'preparing')`, [item.id])
+  const pb = b.query(`select * from advance_order_item($1,'preparing')`, [item.id])
+
+  // ตัวที่คว้าล็อกได้จะ resolve ก่อน อีกตัวค้างรอจนกว่า transaction แรกจะจบ
+  // จึงต้อง commit ตัวที่เสร็จก่อน "ทันที" ไม่ใช่รอทั้งคู่
+  // รอทั้งคู่เมื่อไหร่คือ deadlock ฝั่งเทสต์เอง: b รอ a ปล่อยล็อก ส่วน a รอ b เสร็จก่อนถึงจะ commit
+  const settled = (query, tag) => query.then(() => tag, () => tag)
+  const winner = await Promise.race([settled(pa, 'a'), settled(pb, 'b')])
+  await (winner === 'a' ? a : b).query('commit')
+
+  const results = await Promise.allSettled([pa, pb])
+  // ตัวที่แพ้อาจถูกปฏิเสธไปแล้ว transaction จึง abort — commit บน transaction ที่ abort เท่ากับ rollback
+  await (winner === 'a' ? b : a).query('commit').catch(() => {})
 
   const okCount = results.filter((r) => r.status === 'fulfilled').length
   const [{ n: hist }] = (await admin.query(
