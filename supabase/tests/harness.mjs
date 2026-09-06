@@ -10,13 +10,17 @@ import path from 'path'
 
 const BASE = path.resolve(import.meta.dirname, '..')
 
-const FILES = [
-  '0001_extensions_enums', '0002_core_config', '0003_menu_packages', '0004_floor_queue',
-  '0005_visits', '0006_orders', '0007_billing_payments', '0008_functions_rpc',
-  '0009_rls_realtime', '0010_token_fallback', '0011_queue_tickets',
-  '0012_scope_staff_rls_by_branch', '0013_align_remote_grants',
-  '0014_queue_dashboard_and_guest_adjust', '0015_fix_guest_adjust_audit', '0016_ops_gaps', '0017_qr_code_attempts',
-].map((f) => `migrations/${f}.sql`).concat('seed.sql')
+// อ่านรายชื่อจากโฟลเดอร์จริงแล้วเรียงตามชื่อไฟล์ แทนรายชื่อตายตัว
+// รายชื่อเดิมค้างที่ 0017 ทำให้ 0018 0019 0020 ซึ่งเป็นงานความปลอดภัยทั้งสามไฟล์
+// ไม่เคยถูกเทสต์เลยสักครั้ง migration ที่เพิ่มหลังจากนี้จะถูกครอบเองโดยไม่ต้องแก้ไฟล์เทสต์
+export const MIGRATION_FILES = fs
+  .readdirSync(path.join(BASE, 'migrations'))
+  .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+  .sort()
+  .map((f) => `migrations/${f}`)
+  .concat('seed.sql')
+
+const FILES = MIGRATION_FILES
 
 const sanitize = (s) => s
   .replace(/^create extension.*$/gmi, '--')

@@ -1,15 +1,10 @@
 import { PGlite } from '@electric-sql/pglite'
 import fs from 'fs'
 import path from 'path'
+import { MIGRATION_FILES } from './harness.mjs'
 
 const BASE = path.resolve(import.meta.dirname, '..')
-const FILES = [
-  '0001_extensions_enums', '0002_core_config', '0003_menu_packages', '0004_floor_queue',
-  '0005_visits', '0006_orders', '0007_billing_payments', '0008_functions_rpc',
-  '0009_rls_realtime', '0010_token_fallback', '0011_queue_tickets',
-  '0012_scope_staff_rls_by_branch', '0013_align_remote_grants',
-  '0014_queue_dashboard_and_guest_adjust', '0015_fix_guest_adjust_audit', '0016_ops_gaps', '0017_qr_code_attempts',
-].map(f => `migrations/${f}.sql`).concat('seed.sql')
+const FILES = MIGRATION_FILES
 
 const sanitize = (s) => s
   .replace(/^create extension.*$/gmi, '--')
@@ -503,6 +498,31 @@ console.log('\n── QR ติดโต๊ะ: นับรหัสผิด�
     `select join_visit_with_code($1::uuid,$2)`, [table.qr_token, visit.access_code])
   if (good.ok === true && good.visit.id === visit.id) ok('รหัสถูกต้องเข้าโต๊ะได้')
   else bad('เข้าด้วยรหัสที่ถูกต้อง', JSON.stringify(good))
+}
+
+console.log('')
+console.log('── ด่านยอดเงินของรอบ (0018–0020) ──')
+{
+  // สองฟังก์ชันนี้เป็น security definer ที่รับ visit id ตรง ๆ ใครถือ id ก็ยิงได้
+  // 0018 ใส่ด่านแต่ลืม coalesce — current_visit_id() คืน null สำหรับคนที่ไม่ได้นั่งโต๊ะไหน
+  // แล้ว false or null ได้ null ด่านจึงไม่เคยยิงกับคนที่ควรถูกกันมากที่สุด
+  // 0019 แก้ตรงนั้น ส่วน 0020 ตามไปใส่ให้ visit_amount_reserved ที่ถูกมองข้าม
+  // ใช้รอบที่เทสต์ก่อนหน้าเปิดไว้ — โต๊ะว่างถูกใช้หมดแล้วตอนมาถึงบล็อกนี้
+  await be(staffUid)
+  const [guarded] = await q(`select id from visits order by created_at limit 1`)
+
+  await shouldPass('พนักงานอ่านยอดค้างได้', () => q(`select visit_amount_due($1)`, [guarded.id]))
+  await shouldPass('พนักงานอ่านยอดที่กันไว้ได้', () => q(`select visit_amount_reserved($1)`, [guarded.id]))
+
+  // ผู้ใช้ที่ล็อกอินแล้วแต่ไม่ใช่พนักงานและไม่ได้นั่งโต๊ะไหน — เคสที่ 0018 ปล่อยผ่าน
+  const [{ id: stranger }] = await q(
+    `insert into auth.users(email) values ('stranger-amounts@x.local') returning id`)
+  await be(stranger)
+  await shouldFail('คนนอกอ่านยอดค้างของรอบคนอื่น', 'ไม่มีสิทธิ์ดูยอดของรอบนี้',
+    () => q(`select visit_amount_due($1)`, [guarded.id]))
+  await shouldFail('คนนอกอ่านยอดที่กันไว้ของรอบคนอื่น', 'ไม่มีสิทธิ์ดูยอดของรอบนี้',
+    () => q(`select visit_amount_reserved($1)`, [guarded.id]))
+  await be(staffUid)
 }
 
 console.log(`\n${'─'.repeat(60)}\nผ่าน ${pass} · ไม่ผ่าน ${fail}`)
