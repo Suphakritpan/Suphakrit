@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5173",
+      "localStorage": [
+        {
+          "name": "shabu-mood.auth",
+          "value": "{\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImUzNjFiMGEyLWY0N2ItNGNkNC05YmQwLTU5NzcwMDhmOWNiYyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3RiZGZ2aG9ob2RtdWpyZ3NzbXR4LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIzOTJiZGE1ZC04MjY3LTRjNzAtOTEwMi1hMGM4ZTcxYmUxMDAiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzg3ODQ2NTg3LCJpYXQiOjE3ODc4NDI5ODcsImVtYWlsIjoiIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnt9LCJ1c2VyX21ldGFkYXRhIjp7fSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJhbm9ueW1vdXMiLCJ0aW1lc3RhbXAiOjE3ODc4NDI5ODd9XSwic2Vzc2lvbl9pZCI6IjgwNzE0ODEwLTQ3YzItNGQzMi1hOTY0LWYzNTM1MDVlMzBhMiIsImlzX2Fub255bW91cyI6dHJ1ZX0.t7mNjgHQzCpT8Gp9VQpzOMkwewVYIzLHAMUnvKWaeBDcrV5PISV_wmCQxB-yMBXCOTMrToPGSaJ32F6z_UV-dw\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1787846587,\"refresh_token\":\"nk5qti2nlrtp\",\"user\":{\"id\":\"392bda5d-8267-4c70-9102-a0c8e71be100\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"\",\"phone\":\"\",\"last_sign_in_at\":\"2026-08-27T15:03:07.533943917Z\",\"app_metadata\":{},\"user_metadata\":{},\"identities\":[],\"created_at\":\"2026-08-27T15:03:07.469806Z\",\"updated_at\":\"2026-08-27T15:03:07.582613Z\",\"is_anonymous\":true}}"
+        }
+      ]
+    }
+  ]
+}

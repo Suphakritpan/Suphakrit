@@ -1,0 +1,26 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "Shabu Mood" [level=1] [ref=e5]
+    - paragraph [ref=e6]: คิวหน้าร้าน
+  - generic [ref=e7]:
+    - paragraph [ref=e8]: กำลังเรียก
+    - generic [ref=e10]:
+      - generic [ref=e11]: "14"
+      - generic [ref=e12]: 6 ท่าน
+  - generic [ref=e13]:
+    - paragraph [ref=e14]: คิวถัดไป
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: "12"
+        - generic [ref=e18]: 2 ท่าน · รอ 14 นาที
+      - generic [ref=e19]:
+        - generic [ref=e20]: "13"
+        - generic [ref=e21]: 4 ท่าน · รอ 9 นาที
+      - generic [ref=e22]:
+        - generic [ref=e23]: "15"
+        - generic [ref=e24]: 3 ท่าน · รอ 2 นาที
+  - contentinfo [ref=e25]:
+    - generic [ref=e26]: รออยู่ 3 คิว
+    - generic [ref=e27]: โต๊ะว่าง 4
+    - generic [ref=e28]: รอเก็บโต๊ะ 1
+    - generic [ref=e29]: ใช้งานอยู่ 6
