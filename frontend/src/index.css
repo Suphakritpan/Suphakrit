@@ -121,6 +121,21 @@ body::before {
 #root { position: relative; z-index: 2; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
+
+/* select ที่ไม่ได้อยู่ใน .field ไม่เคยถูกตั้งพื้นหลัง จึงได้สีขาวจากเบราว์เซอร์
+   มาชนกับ color: inherit ซึ่งเป็นสีอ่อนของธีมมืด ผลคือขาวบนขาว อ่านไม่ออก
+   และมองไม่ออกด้วยซ้ำว่ามีตัวเลือกให้กด — .field select มีสไตล์เต็มของตัวเองอยู่แล้ว
+   และเฉพาะเจาะจงกว่า จึงไม่ถูกกฎนี้ทับ */
+select {
+  background: var(--n900);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r-sm);
+  height: 34px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+select:disabled { opacity: .55; cursor: default; }
+option { background: var(--n900); color: var(--n50); }
 button { cursor: pointer; border: none; background: none; padding: 0; }
 a { color: inherit; text-decoration: none; }
 h1, h2, h3, h4, p { margin: 0; font-weight: inherit; }
