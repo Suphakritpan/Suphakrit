@@ -127,6 +127,33 @@ export async function listStaff() {
 }
 
 /** ล็อกแพ็กเกจของเมนู — ตารางเชื่อมไม่มี id ของตัวเอง จึงลบทิ้งแล้วใส่ใหม่ทั้งชุด */
+export const MENU_BUCKET = 'menu-images'
+
+/**
+ * อัปโหลดรูปเมนูขึ้น Supabase Storage แล้วคืน URL สาธารณะ
+ * ---------------------------------------------------------------------------
+ * เก็บเป็นไฟล์ใหม่ทุกครั้ง ไม่เขียนทับของเดิม เพราะ CDN แคชตาม URL
+ * ถ้าเขียนทับชื่อเดิม รูปเก่าจะค้างอยู่บนจอลูกค้าไปอีกนาน
+ *
+ * bucket ต้องเป็น public — ลูกค้าเปิดหน้าเมนูโดยไม่ได้ล็อกอินเป็นพนักงาน
+ * และรูปอาหารไม่ใช่ข้อมูลที่ต้องกัน
+ */
+export async function uploadMenuImage(file, itemId) {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const path = `${itemId ?? 'new'}/${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from(MENU_BUCKET)
+    .upload(path, file, { cacheControl: '31536000', upsert: false })
+  if (error) {
+    if (/bucket not found/i.test(error.message)) {
+      throw new Error(
+        `ยังไม่มีที่เก็บรูปชื่อ "${MENU_BUCKET}" ใน Supabase Storage — ` +
+        'สร้าง bucket นี้แบบ public ก่อนหนึ่งครั้ง แล้วอัปโหลดได้เลย')
+    }
+    throw new Error(error.message)
+  }
+  return supabase.storage.from(MENU_BUCKET).getPublicUrl(path).data.publicUrl
+}
+
 export async function setMenuPackages(menuItemId, packageIds) {
   const del = await supabase.from('menu_item_packages').delete().eq('menu_item_id', menuItemId)
   if (del.error) throw new Error(del.error.message)

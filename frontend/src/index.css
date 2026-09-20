@@ -1152,3 +1152,64 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ── เส้นคั่นทั่วไป ───────────────────────────────────────────────────────── */
 .body hr, .body .sep { border: 0; border-top: 1px solid var(--o-line); }
+
+
+/* ── สลับมุมมอง ลิสต์ / กริด ──────────────────────────────────────────────
+   ปุ่มคู่ติดกันแบบแถบเครื่องมือ ปุ่มที่เลือกอยู่จมลงไป ไม่ใช่แค่เปลี่ยนสี
+   คนที่ไม่ได้ใช้คอมเป็นอาชีพอ่าน "จม = กำลังใช้อยู่" ได้เร็วกว่าอ่านจากสี */
+.body .viewtoggle { display: inline-flex; border: 1px solid var(--o-line-2); border-radius: 2px; overflow: hidden; }
+.body .viewtoggle button {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px; font-size: 12px; font-weight: 600;
+  background: var(--o-sheet); color: var(--o-ink-2); border: 0; cursor: pointer;
+}
+.body .viewtoggle button + button { border-left: 1px solid var(--o-line-2); }
+.body .viewtoggle button:hover { background: var(--o-ground); color: var(--o-ink); }
+.body .viewtoggle button.on { background: #e5eefa; color: var(--o-accent); box-shadow: inset 0 1px 2px rgba(0,0,0,.09); }
+.body .viewtoggle button:focus-visible { outline: 2px solid var(--o-accent); outline-offset: -2px; }
+
+/* ── มุมมองกริดของเมนู ─────────────────────────────────────────────────── */
+.body .mgrid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+}
+.body .mcard {
+  display: flex; flex-direction: column;
+  background: var(--o-sheet); border: 1px solid var(--o-line); border-radius: 2px;
+}
+.body .mcard--off { opacity: .6; }
+.body .mcard__ph {
+  position: relative; display: block; width: 100%; aspect-ratio: 4 / 3;
+  background: var(--o-ground); border: 0; border-bottom: 1px solid var(--o-line);
+  padding: 0; cursor: pointer; overflow: hidden;
+}
+.body .mcard__ph img { width: 100%; height: 100%; object-fit: cover; }
+.body .mcard__ph > div { width: 100%; height: 100%; background: var(--o-ground) !important; }
+.body .mcard__noph {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--o-ink-3);
+}
+.body .mcard__ph:hover .mcard__noph { color: var(--o-accent); }
+.body .mcard__bd { padding: 10px 12px; }
+.body .mcard__ft { display: flex; gap: 6px; padding: 0 12px 12px; margin-top: auto; }
+
+/* ── รูปย่อในตาราง — กดเพื่อเปิดฟอร์มเปลี่ยนรูป ─────────────────────────── */
+.body .thumb {
+  position: relative; width: 44px; height: 34px; padding: 0; cursor: pointer;
+  background: var(--o-ground); border: 1px solid var(--o-line); border-radius: 2px;
+  overflow: hidden; display: flex; align-items: center; justify-content: center;
+  color: var(--o-ink-3);
+}
+.body .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.body .thumb > div { width: 100%; height: 100%; background: var(--o-ground) !important; }
+.body .thumb:hover { border-color: var(--o-accent); color: var(--o-accent); }
+
+/* ── แถวเลือกรูปในฟอร์ม ───────────────────────────────────────────────── */
+.body .imgpick {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--o-line);
+}
+.body .imgpick__ph {
+  width: 116px; height: 87px; flex: none; object-fit: cover;
+  background: var(--o-ground); border: 1px solid var(--o-line); border-radius: 2px;
+}
