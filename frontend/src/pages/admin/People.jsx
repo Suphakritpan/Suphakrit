@@ -4,6 +4,7 @@ import { Chip, Empty, Note } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import * as admin from '../../api/admin'
 import { useRows } from './Ops'
+import { useStore } from '../../context/StoreProvider'
 import { baht, bahtToSatang, satangToText } from '../../utils/money'
 import { dateTH } from '../../utils/time'
 
@@ -23,7 +24,9 @@ export function AdminPromotions() {
 
   const run = async (fn) => {
     setBusy(true); setSaveError(null)
-    try { await fn(); reload() } catch (e) { setSaveError(e.message) } finally { setBusy(false) }
+    try { await fn(); reload(); return true }
+    catch (e) { setSaveError(e.message); return false }
+    finally { setBusy(false) }
   }
 
   return (
@@ -36,6 +39,9 @@ export function AdminPromotions() {
         {(error ?? saveError) && (
           <div style={{ marginBottom: 16 }}><Note tone="warn" icon="alert">{error ?? saveError}</Note></div>
         )}
+
+        <NewPromoRow busy={busy} run={run} />
+
         {rows === null ? <p className="t-sm muted">กำลังโหลด…</p>
           : rows.length === 0 ? <Empty icon="tag" title="ยังไม่มีโปรโมชั่น" />
             : (
@@ -55,6 +61,68 @@ export function AdminPromotions() {
             )}
       </div>
     </>
+  )
+}
+
+/**
+ * สร้างโค้ดใหม่ — เดิมหน้านี้แก้ของเดิมได้อย่างเดียว ไม่มีทางสร้างใหม่เลย (ปิดช่องนี้ตามแผนปิดโปรเจกต์)
+ *
+ * scope/days_of_week/time_start-end/max_uses ปล่อยเป็นค่าเริ่มต้นของตาราง (bill, ทุกวัน, ทั้งวัน, ไม่จำกัดครั้ง)
+ * เพราะฟอร์มแก้ของเดิมด้านล่าง (PromoRow) ก็ยังแก้ได้แค่ชื่อ/ค่าลด/ยอดขั้นต่ำ/เปิดปิด เท่ากัน — ไม่ทำฟอร์มสร้างให้ครบกว่าฟอร์มแก้
+ */
+function NewPromoRow({ busy, run }) {
+  const { branchId } = useStore()
+  const empty = { code: '', name: '', type: 'percent', value: '', min: '0' }
+  const [d, setD] = useState(empty)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!branchId || !d.code.trim() || !d.name.trim() || !d.value) return
+    const ok = await run(() => admin.saveRow('promotions', {
+      branch_id: branchId,
+      code: d.code.trim().toUpperCase(),
+      name: d.name.trim(),
+      type: d.type,
+      min_spend_satang: bahtToSatang(d.min || '0'),
+      is_active: true,
+      ...(d.type === 'percent'
+        ? { value_bp: Math.round(Number(d.value) * 100) }
+        : { value_satang: bahtToSatang(d.value) }),
+    }))
+    if (ok) setD(empty)
+  }
+
+  return (
+    <form onSubmit={submit} className="row g8 wrap" style={{ marginBottom: 18, alignItems: 'flex-end' }}>
+      <label className="field" style={{ maxWidth: 130 }}>
+        <span>โค้ดใหม่</span>
+        <input value={d.code} onChange={(e) => setD({ ...d, code: e.target.value })}
+               placeholder="SUMMER10" required />
+      </label>
+      <label className="field" style={{ maxWidth: 220 }}>
+        <span>ชื่อโปร</span>
+        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} required />
+      </label>
+      <label className="field" style={{ maxWidth: 130 }}>
+        <span>ประเภท</span>
+        <select value={d.type} onChange={(e) => setD({ ...d, type: e.target.value })}>
+          <option value="percent">ลดเป็นเปอร์เซ็นต์</option>
+          <option value="fixed">ลดตายตัว (บาท)</option>
+        </select>
+      </label>
+      <label className="field" style={{ maxWidth: 100 }}>
+        <span>{d.type === 'percent' ? 'ลด (%)' : 'ลด (บาท)'}</span>
+        <input inputMode="decimal" value={d.value}
+               onChange={(e) => setD({ ...d, value: e.target.value })} required />
+      </label>
+      <label className="field" style={{ maxWidth: 120 }}>
+        <span>ยอดขั้นต่ำ (บาท)</span>
+        <input inputMode="decimal" value={d.min} onChange={(e) => setD({ ...d, min: e.target.value })} />
+      </label>
+      <button className="btn btn--primary btn--sm" type="submit" disabled={busy || !branchId}>
+        <Icon name="plus" size={14} /> สร้างโค้ด
+      </button>
+    </form>
   )
 }
 
@@ -177,14 +245,30 @@ export function AdminCustomers() {
 }
 
 // ── พนักงาน ─────────────────────────────────────────────────────────────────
+// role มาจาก enum staff_role (0001) — ตรงกับ 5 ค่านี้เป๊ะ ไม่ใช่ค่าอิสระ
+const ROLES = ['owner', 'manager', 'staff', 'kitchen', 'cashier']
+
 export function AdminStaff() {
-  const { rows, error } = useRows(() => admin.listStaff(), [])
+  const { rows, error, reload } = useRows(() => admin.listStaff(), [])
+  const [busyId, setBusyId] = useState(null)
+  const [saveError, setSaveError] = useState(null)
+
+  // RLS (manage_profiles = is_manager()) เป็นด่านจริง — ปุ่มนี้แค่เรียก UPDATE ตรง
+  // ไม่ต้องมี RPC คั่นเพราะไม่มีคอลัมน์ไหนต้องกันไม่ให้ manager แก้ (ต่างจาก menu_items ที่กันเรื่องราคา)
+  const changeRole = async (id, role) => {
+    setBusyId(id); setSaveError(null)
+    try { await admin.saveRow('profiles', { id, role }); reload() }
+    catch (e) { setSaveError(e.message) }
+    finally { setBusyId(null) }
+  }
 
   return (
     <>
       <TopBar title="พนักงาน" sub="สร้างผู้ใช้ใหม่ทำที่ Supabase Auth แล้วผูกสิทธิ์ในตาราง profiles" />
       <div className="body">
-        {error && <div style={{ marginBottom: 16 }}><Note tone="warn" icon="alert">{error}</Note></div>}
+        {(error ?? saveError) && (
+          <div style={{ marginBottom: 16 }}><Note tone="warn" icon="alert">{error ?? saveError}</Note></div>
+        )}
         {rows === null ? <p className="t-sm muted">กำลังโหลด…</p> : (
           <div className="tablewrap">
             <table className="data">
@@ -193,7 +277,12 @@ export function AdminStaff() {
                 {rows.map((p) => (
                   <tr key={p.id}>
                     <td><b>{p.full_name ?? '—'}</b></td>
-                    <td><Chip tone={p.role === 'manager' ? 'gold' : 'neutral'}>{p.role}</Chip></td>
+                    <td>
+                      <select value={p.role} disabled={busyId === p.id}
+                              onChange={(e) => changeRole(p.id, e.target.value)}>
+                        {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </td>
                     <td className="muted">{p.is_active === false ? 'ปิดใช้งาน' : 'ใช้งาน'}</td>
                     <td className="muted">{dateTH(p.created_at)}</td>
                   </tr>
