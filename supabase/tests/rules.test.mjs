@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import fs from 'fs'
 import path from 'path'
-import { MIGRATION_FILES } from './harness.mjs'
+import { MIGRATION_FILES, STORAGE_STUB } from './harness.mjs'
 
 const BASE = path.resolve(import.meta.dirname, '..')
 const FILES = MIGRATION_FILES
@@ -24,6 +24,7 @@ await db.exec(`
     as $fn$ select nullif(current_setting('test.uid', true), '')::uuid $fn$;
   create publication supabase_realtime;
 `)
+await db.exec(STORAGE_STUB)
 for (const f of FILES) await db.exec(sanitize(fs.readFileSync(path.join(BASE, f), 'utf8')))
 
 const q = async (sql, p) => (await db.query(sql, p)).rows

@@ -22,6 +22,25 @@ export const MIGRATION_FILES = fs
 
 const FILES = MIGRATION_FILES
 
+/**
+ * Supabase Storage ไม่ได้มากับ PostgreSQL เปล่า ๆ แต่ 0022 เขียนลง bucket จริง
+ * สองตารางนี้เป็นแค่ตัวแทนพอให้ migration รันผ่าน ไม่ได้จำลองพฤติกรรมของ Storage
+ * เก็บไว้ที่เดียวแล้ว import ไปใช้ เพราะ migrate.test.mjs กับ rules.test.mjs
+ * ต่างก็มี prelude ของตัวเอง ถ้าก๊อปไว้สามที่จะแก้ไม่ครบเวลามี bucket ใหม่
+ */
+export const STORAGE_STUB = `
+  create schema if not exists storage;
+  create table if not exists storage.buckets (
+    id text primary key, name text not null, public boolean not null default false
+  );
+  create table if not exists storage.objects (
+    id uuid primary key default gen_random_uuid(),
+    bucket_id text references storage.buckets(id),
+    name text
+  );
+  alter table storage.objects enable row level security;
+`
+
 const sanitize = (s) => s
   .replace(/^create extension.*$/gmi, '--')
   .replace(/^\s*(grant|revoke)\b[^;]*;/gmi, '--')
@@ -37,8 +56,10 @@ export async function boot() {
     create table if not exists auth.users (id uuid primary key default gen_random_uuid(), email text unique);
     create or replace function auth.uid() returns uuid language sql stable
       as $fn$ select nullif(current_setting('test.uid', true), '')::uuid $fn$;
+
     create publication supabase_realtime;
   `)
+  await db.exec(STORAGE_STUB)
   for (const f of FILES) await db.exec(sanitize(fs.readFileSync(path.join(BASE, f), 'utf8')))
 
   const q = async (sql, p) => (await db.query(sql, p)).rows

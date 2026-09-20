@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import fs from 'fs'
 import path from 'path'
-import { MIGRATION_FILES } from './harness.mjs'
+import { MIGRATION_FILES, STORAGE_STUB } from './harness.mjs'
 
 const BASE = path.resolve(import.meta.dirname, '..')
 
@@ -16,6 +16,7 @@ create table if not exists auth.users (
 );
 create or replace function auth.uid() returns uuid language sql stable as $fn$ select null::uuid $fn$;
 create publication supabase_realtime;
+${STORAGE_STUB}
 `
 
 // บรรทัดที่ PGlite รันไม่ได้เพราะไม่มี role / extension เหล่านี้
