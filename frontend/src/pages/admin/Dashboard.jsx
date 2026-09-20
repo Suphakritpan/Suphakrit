@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useStore } from '../../context/StoreProvider'
 import { TopBar } from '../../components/layout/Layouts'
 import { Chip } from '../../components/shared/Bits'
@@ -7,18 +7,23 @@ import * as admin from '../../api/admin'
 import { useRows } from './Ops'
 import { VISIT_STATUS } from '../../data/constants'
 import { baht, previewBill } from '../../utils/money'
+import { mockAggregates, mockQueueTally, mockWorkload, mockLive } from './mockDashboard'
 
 export default function AdminDashboard() {
   const store = useStore()
-  const d = store.dashboard
+  // /admin?mock=1 — ดูหน้าตาตอนร้านมีข้อมูลเยอะ โดยไม่ต้องแตะฐานข้อมูลจริง
+  // ที่อยู่ปกติไม่เปลี่ยนพฤติกรรมเลยสักอย่าง
+  const mock = new URLSearchParams(useLocation().search).has('mock')
+  const d = mock ? mockAggregates : store.dashboard
   const tz = store.settings?.timezone ?? 'Asia/Bangkok'
 
   // คิวทั้งวันไม่ได้อยู่ใน store (store เก็บเฉพาะที่ยังรออยู่) — ผู้จัดการต้องเห็น no-show ด้วย
   const { rows: queue } = useRows(() => admin.listQueueToday(tz), [tz])
-  const qTally = (queue ?? []).reduce((a, q) => ({ ...a, [q.status]: (a[q.status] ?? 0) + 1 }), {})
+  const realTally = (queue ?? []).reduce((a, q) => ({ ...a, [q.status]: (a[q.status] ?? 0) + 1 }), {})
+  const qTally = mock ? mockQueueTally : realTally
 
   // งานค้างของแต่ละสถานี — เห็นทันทีว่าครัวไหนเป็นคอขวด
-  const workload = store.stations.map((s) => {
+  const realWorkload = store.stations.map((s) => {
     const items = store.kitchenTickets().flatMap((t) => t.items).filter((i) => i.station_id === s.id)
     return {
       station: s,
@@ -27,13 +32,12 @@ export default function AdminDashboard() {
       ready: items.filter((i) => i.status === 'ready').length,
     }
   })
+  const workload = mock ? mockWorkload(store.stations) : realWorkload
   const busiest = Math.max(1, ...workload.map((w) => w.pending + w.preparing))
 
-  const occupied = store.tables.filter((t) => t.status === 'occupied').length
-  const free = store.tables.filter((t) => t.status === 'available').length
   const peak = Math.max(...d.hourly.map((h) => h.v))
 
-  const live = store.tables.map((t) => {
+  const realLive = store.tables.map((t) => {
     const v = store.activeVisitOf(t.id)
     if (!v) return { table: t, total: 0, guests: 0, visit: null }
     const bill = previewBill({
@@ -42,7 +46,13 @@ export default function AdminDashboard() {
     })
     return { table: t, total: bill.total, guests: v.adult_count + v.child_count, visit: v }
   })
+  const live = mock ? mockLive(store.tables) : realLive
   const liveTotal = live.reduce((n, r) => n + r.total, 0)
+
+  const occupied = mock
+    ? live.filter((r) => r.visit).length
+    : store.tables.filter((t) => t.status === 'occupied').length
+  const free = store.tables.length - occupied
 
   const today = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
 
