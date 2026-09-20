@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useStore, useCart } from '../../context/StoreProvider'
+import { useStore, useCart, parseCartKey } from '../../context/StoreProvider'
 import { CustomerBar } from '../../components/layout/Layouts'
 import { Step, Empty, Note, Chip, Photo } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import { baht } from '../../utils/money'
 import { remaining } from '../../utils/time'
+import { SIZES, DEFAULT_SIZE, hasSizes } from '../../data/constants'
 
 export default function CustomerMenu() {
   const [params, setParams] = useSearchParams()
@@ -41,7 +42,13 @@ export default function CustomerMenu() {
   const locked = (m) =>
     m.allowed_package_ids.length > 0 && !m.allowed_package_ids.includes(visit.package_id)
 
-  const lines = cart.lines.map(([id, qty]) => ({ menu: store.menuItems.find((m) => m.id === id), qty }))
+  // คีย์ตะกร้าอาจเป็น "เมนู|ขนาด" — แยกกลับมาเพื่อหาเมนูและแสดงขนาดให้ลูกค้าเห็น
+  const lines = cart.lines
+    .map(([key, qty]) => {
+      const { menuId, size } = parseCartKey(key)
+      return { key, size, qty, menu: store.menuItems.find((m) => m.id === menuId) }
+    })
+    .filter((l) => l.menu)
   const extra = lines.reduce((n, l) => n + (l.menu.a_la_carte_price_satang ?? 0) * l.qty, 0)
 
   const overLines = cart.lines.length > s.max_items_per_order
@@ -57,7 +64,12 @@ export default function CustomerMenu() {
     const ok = await store.dispatch({
       type: 'PLACE_ORDER',
       visitId: visit.id,
-      items: cart.lines.map(([menu_item_id, quantity]) => ({ menu_item_id, quantity })),
+      // ขนาดเดินทางไปกับ note ต่อรายการที่ place_order() รับอยู่แล้ว
+      // ไม่ต้องเพิ่มคอลัมน์ เพราะขนาดไม่กระทบยอดเงินเลย
+      items: cart.lines.map(([key, quantity]) => {
+        const { menuId, size } = parseCartKey(key)
+        return { menu_item_id: menuId, quantity, note: size ? `ขนาด: ${size}` : undefined }
+      }),
     })
     setSending(false)
     if (!ok) return          // ข้อความจากฐานข้อมูลขึ้นเป็น toast ให้แล้ว ตะกร้าคงไว้ให้แก้
@@ -129,39 +141,10 @@ export default function CustomerMenu() {
 
             {items.length === 0 && <Empty icon="search" title="ไม่พบเมนูที่ค้นหา" hint="ลองพิมพ์ชื่ออื่นดูนะคะ" />}
 
-            {items.map((m) => {
-              const isLocked = locked(m)
-              const out = !m.is_available
-              const off = isLocked || out || closed
-
-              return (
-                <div key={m.id} className={`mrow ${off ? 'mrow--off' : ''}`}>
-                  <div className="grow">
-                    <div className="row g8">
-                      <span className="mrow__name">{m.name_th}</span>
-                      {isLocked && <Chip tone="neutral" icon="lock">พรีเมียม</Chip>}
-                      {out && <Chip tone="warn">ของหมด</Chip>}
-                    </div>
-                    <p className="t-xs muted" style={{ marginTop: 2 }}>
-                      {isLocked
-                        ? 'สั่งได้เฉพาะแพ็กเกจพรีเมียม'
-                        : out
-                          ? 'เมนูนี้หมดชั่วคราว'
-                          : m.is_included_in_buffet
-                            ? 'รวมในบุฟเฟต์'
-                            : `สั่งพิเศษ ${baht(m.a_la_carte_price_satang)}`}
-                    </p>
-                  </div>
-
-                  <Step
-                    value={cart.cart[m.id] ?? 0}
-                    max={off ? 0 : s.max_qty_per_item}
-                    onAdd={() => !off && cart.add(m.id)}
-                    onSub={() => cart.sub(m.id)}
-                  />
-                </div>
-              )
-            })}
+            {items.map((m) => (
+              <MenuItemRow key={m.id} m={m} cart={cart} max={s.max_qty_per_item}
+                           isLocked={locked(m)} closed={closed} />
+            ))}
           </div>
 
           {/* ── สรุปตะกร้าบนจอกว้าง ── */}
@@ -174,8 +157,11 @@ export default function CustomerMenu() {
               <>
                 <div className="stack g8">
                   {lines.map((l) => (
-                    <div key={l.menu.id} className="between t-sm">
-                      <span className="trunc">{l.menu.name_th}</span>
+                    <div key={l.key} className="between t-sm">
+                      <span className="trunc">
+                        {l.menu.name_th}
+                        {l.size && <span className="muted"> · {l.size}</span>}
+                      </span>
                       <span className="bold num">× {l.qty}</span>
                     </div>
                   ))}
@@ -240,9 +226,10 @@ export default function CustomerMenu() {
 
             <div className="sheet__bd">
               {lines.map((l) => (
-                <div key={l.menu.id} className="between" style={{ padding: '9px 0', borderBottom: '1px solid var(--n100)' }}>
+                <div key={l.key} className="between" style={{ padding: '9px 0', borderBottom: '1px solid var(--n100)' }}>
                   <span className="grow">
                     <span className="bold t-sm">{l.menu.name_th}</span>
+                    {l.size && <Chip tone="neutral" style={{ marginLeft: 6 }}>{l.size}</Chip>}
                     {!l.menu.is_included_in_buffet && (
                       <span className="t-xs muted" style={{ display: 'block' }}>
                         {baht(l.menu.a_la_carte_price_satang)} × {l.qty}
@@ -250,7 +237,7 @@ export default function CustomerMenu() {
                     )}
                   </span>
                   <Step value={l.qty} max={s.max_qty_per_item}
-                        onAdd={() => cart.add(l.menu.id)} onSub={() => cart.sub(l.menu.id)} />
+                        onAdd={() => cart.add(l.menu.id, l.size)} onSub={() => cart.sub(l.key)} />
                 </div>
               ))}
 
@@ -287,5 +274,64 @@ export default function CustomerMenu() {
         </div>
       )}
     </>
+  )
+}
+
+/**
+ * แถวเมนูหนึ่งรายการ
+ * ---------------------------------------------------------------------------
+ * แยกออกมาเพราะเมนูที่เลือกขนาดได้ต้องจำว่าตอนนี้เลือกขนาดไหนอยู่
+ * ซึ่งเป็น state ต่อรายการ เรียก useState ในลูปไม่ได้
+ *
+ * ปุ่มขนาดวางไว้ใต้ชื่อเมนู ไม่ใช่ในหน้าต่างซ้อน เพราะลูกค้าถือมือถือข้างหม้อ
+ * กดสองชั้นเพื่อสั่งของอย่างเดียวคือหนึ่งชั้นมากเกินไป
+ */
+function MenuItemRow({ m, cart, max, isLocked, closed }) {
+  const out = !m.is_available
+  const off = isLocked || out || closed
+  const sizeable = hasSizes(m)
+  const [size, setSize] = useState(DEFAULT_SIZE)
+  const key = sizeable ? `${m.id}|${size}` : m.id
+
+  return (
+    <div className={`mrow ${off ? 'mrow--off' : ''}`}>
+      <div className="grow">
+        <div className="row g8">
+          <span className="mrow__name">{m.name_th}</span>
+          {isLocked && <Chip tone="neutral" icon="lock">พรีเมียม</Chip>}
+          {out && <Chip tone="warn">ของหมด</Chip>}
+        </div>
+        <p className="t-xs muted" style={{ marginTop: 2 }}>
+          {isLocked
+            ? 'สั่งได้เฉพาะแพ็กเกจพรีเมียม'
+            : out
+              ? 'เมนูนี้หมดชั่วคราว'
+              : m.is_included_in_buffet
+                ? 'รวมในบุฟเฟต์'
+                : `สั่งพิเศษ ${baht(m.a_la_carte_price_satang)}`}
+        </p>
+
+        {sizeable && !off && (
+          <div className="sizes" role="group" aria-label={`ขนาดของ ${m.name_th}`}>
+            {SIZES.map((sz) => {
+              const inCart = cart.cart[`${m.id}|${sz}`] ?? 0
+              return (
+                <button key={sz} type="button" aria-pressed={sz === size}
+                        className={sz === size ? 'on' : ''} onClick={() => setSize(sz)}>
+                  {sz}{inCart > 0 && <span className="sizes__n">{inCart}</span>}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <Step
+        value={cart.cart[key] ?? 0}
+        max={off ? 0 : max}
+        onAdd={() => !off && cart.add(m.id, sizeable ? size : undefined)}
+        onSub={() => cart.sub(key)}
+      />
+    </div>
   )
 }

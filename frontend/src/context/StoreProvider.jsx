@@ -307,6 +307,13 @@ export function StoreProvider({ children }) {
   // เจอจริงตอนรัน E2E ที่เปิด context ใหม่ทุกเทสต์จนชน rate limit ของ anonymous sign-in
   useEffect(() => {
     let alive = true
+
+    // /q/:token (เช็คคิวด้วย QR บัตรคิว) อ่านผ่าน get_queue_status() ซึ่ง grant ให้ role
+    // anon เรียกตรงได้อยู่แล้ว (0011) ไม่ต้องมี session เลย — หน้านี้ไม่เคยเรียก useStore() ด้วยซ้ำ
+    // ถ้าปล่อยให้ boot flow รันเหมือนหน้าอื่น จะ signInAnonymously() สมัครบัญชีทิ้งไว้ให้ทุกคน
+    // ที่แค่มายืนเช็คคิว ไม่เคยได้ที่นั่งด้วยซ้ำ — บัญชีขยะโตวันละเท่าจำนวนคนเช็คคิว
+    if (window.location.pathname.startsWith('/q/')) return
+
     ;(async () => {
       let probe
       try {
@@ -771,6 +778,18 @@ export function useStore() {
   return ctx
 }
 
+/**
+ * คีย์ของตะกร้าเป็น "เมนู" หรือ "เมนู|ขนาด"
+ * ---------------------------------------------------------------------------
+ * เมนูเดียวกันคนละขนาดต้องนับแยกกัน ไม่งั้นลูกค้าสั่งเนื้อจานเล็กกับจานใหญ่
+ * แล้วได้เป็นจานเดียวกันสองที่ เครื่องหมาย | ใช้ได้เพราะ uuid ไม่มีอักขระตัวนี้
+ */
+export const cartKey = (menuId, size) => (size ? `${menuId}|${size}` : menuId)
+export function parseCartKey(key) {
+  const i = key.indexOf('|')
+  return i < 0 ? { menuId: key, size: null } : { menuId: key.slice(0, i), size: key.slice(i + 1) }
+}
+
 /** ตะกร้าอยู่ที่เครื่องใครเครื่องมัน แต่ออเดอร์ที่ส่งแล้วแชร์ทั้งโต๊ะ */
 export function useCart() {
   const [cart, setCart] = useReducer((s, a) => {
@@ -790,9 +809,10 @@ export function useCart() {
   const { settings } = useStore()
   const max = settings?.max_qty_per_item ?? 10
 
-  const add = useCallback((menuId) => setCart({ type: 'ADD', menuId, max }), [max])
-  const sub = useCallback((menuId) => setCart({ type: 'SUB', menuId }), [])
-  const remove = useCallback((menuId) => setCart({ type: 'REMOVE', menuId }), [])
+  // เรียกด้วย (menuId) เหมือนเดิมได้ ถ้าไม่ส่งขนาดมาคีย์ก็คือ menuId ตรง ๆ
+  const add = useCallback((menuId, size) => setCart({ type: 'ADD', menuId: cartKey(menuId, size), max }), [max])
+  const sub = useCallback((key) => setCart({ type: 'SUB', menuId: key }), [])
+  const remove = useCallback((key) => setCart({ type: 'REMOVE', menuId: key }), [])
   const clear = useCallback(() => setCart({ type: 'CLEAR' }), [])
 
   const lines = Object.entries(cart)

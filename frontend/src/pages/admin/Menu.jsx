@@ -5,6 +5,7 @@ import { Chip, Note, Photo } from '../../components/shared/Bits'
 import Icon from '../../components/ui/Icon'
 import * as admin from '../../api/admin'
 import { bahtToSatang, satangToText } from '../../utils/money'
+import { SIZE_TAG, SIZES, hasSizes } from '../../data/constants'
 
 // ---------------------------------------------------------------------------
 // จัดการเมนู — เพิ่ม แก้ ลบ เปลี่ยนรูป เปลี่ยนสถานีครัว และล็อกแพ็กเกจ
@@ -17,9 +18,6 @@ import { bahtToSatang, satangToText } from '../../utils/money'
 // ไม่ได้เพิ่มคอลัมน์ใหม่ เพราะขนาดไม่กระทบราคา — ของในบุฟเฟต์คิดตามหัวไม่ใช่ตามจาน
 // มันคือคำสั่งถึงครัว ไม่ใช่ข้อมูลการเงิน
 // ---------------------------------------------------------------------------
-
-export const SIZE_TAG = 'sizes'
-export const SIZES = ['เล็ก', 'กลาง', 'ใหญ่']
 
 const VIEW_KEY = 'shabu.menu.view'
 const readView = () => {
@@ -146,8 +144,6 @@ export default function AdminMenu() {
     </>
   )
 }
-
-const hasSizes = (item) => (item.tags ?? []).includes(SIZE_TAG)
 
 /** การ์ดในมุมมองกริด — รูปนำ กดที่การ์ดเพื่อแก้ */
 function MenuCard({ item, store, busy, run, onEdit }) {

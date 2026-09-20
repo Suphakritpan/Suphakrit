@@ -1213,3 +1213,54 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   width: 116px; height: 87px; flex: none; object-fit: cover;
   background: var(--o-ground); border: 1px solid var(--o-line); border-radius: 2px;
 }
+
+
+/* ── ปุ่มเลือกขนาดจานฝั่งลูกค้า ─────────────────────────────────────────────
+   อยู่ใต้ชื่อเมนูในแถวเดียวกัน ไม่ใช่ในหน้าต่างซ้อน
+   ปุ่มสูง 30px กว้างพอให้นิ้วโป้งกดโดนตอนถือมือถือข้างหม้อที่กำลังเดือด
+   ตัวเลขมุมปุ่มบอกว่าขนาดนั้นอยู่ในตะกร้ากี่ที่แล้ว จะได้ไม่ต้องเปิดตะกร้าดู */
+.sizes { display: flex; gap: 6px; margin-top: 8px; }
+.sizes button {
+  position: relative; min-width: 56px; height: 30px; padding: 0 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--n200); background: var(--s2);
+  border: 1px solid var(--line-hi); border-radius: var(--r-sm);
+  transition: background .14s, border-color .14s, color .14s;
+}
+.sizes button:hover { border-color: var(--e700); color: var(--n50); }
+.sizes button.on {
+  background: var(--brand-soft); border-color: var(--e600); color: var(--e300);
+}
+.sizes button:focus-visible { outline: 2px solid var(--e500); outline-offset: 2px; }
+.sizes__n {
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px;
+  padding: 0 4px; border-radius: 99px;
+  background: var(--e500); color: #fff;
+  font-size: 10.5px; font-weight: 700; line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── กรอบสแกน QR ─────────────────────────────────────────────────────────
+   ภาพจากกล้องเต็มกรอบสี่เหลี่ยมจัตุรัส มีกรอบมุมบอกว่าเล็งตรงไหน
+   ไม่ใส่แอนิเมชันเส้นกวาด เพราะมันบอกอะไรไม่ได้จริงและกินแบตตอนกล้องเปิดค้าง */
+.scanbox {
+  position: relative; width: 100%; aspect-ratio: 1 / 1;
+  background: #000; border: 1px solid var(--line);
+  border-radius: var(--r-lg); overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.scanbox video { width: 100%; height: 100%; object-fit: cover; }
+.scanbox__frame {
+  position: absolute; inset: 14%;
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,.38);
+  outline: 2px solid rgba(255,255,255,.9);
+  outline-offset: -2px;
+}
+.scanbox__hint {
+  position: absolute; color: var(--n300); font-size: 13.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sizes button { transition: none; }
+}

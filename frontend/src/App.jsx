@@ -6,6 +6,7 @@ import Landing from './pages/Landing'
 import Join from './pages/Join'
 import QueueStatus from './pages/QueueStatus'
 import Display from './pages/Display'
+import Scan from './pages/Scan'
 
 import CustomerHome from './pages/customer/Home'
 import CustomerMenu from './pages/customer/Menu'
@@ -32,6 +33,9 @@ export default function App() {
           <Route path="/" element={<Landing />} />
 
           {/* QR บนสลิป — ผูก session เข้ากับ visit แล้วเด้งไป /order */}
+          {/* สแกน QR ในแอป สำหรับคนที่เปิดเว็บร้านค้างอยู่แล้ว */}
+          <Route path="/scan" element={<Scan />} />
+
           <Route path="/v/:token" element={<Join />} />
 
           {/* QR บนบัตรคิว — เปิดได้โดยไม่ต้องล็อกอิน */}

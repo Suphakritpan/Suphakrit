@@ -24,11 +24,13 @@ const SIDES = [
   },
 ]
 
+// นับสดจากการเล่นซ้ำ migration ทุกไฟล์ลง PGlite เมื่อ 20 ก.ย. 2569
+// ของเดิมเขียน 32 ฟังก์ชันกับ 28 เคสทดสอบ ซึ่งค้างมาจากตอนยังไม่ครบ
 const FACTS = [
   ['28', 'ตารางในฐานข้อมูล'],
   ['54', 'RLS Policy'],
-  ['32', 'ฟังก์ชัน / RPC'],
-  ['28', 'เคสทดสอบที่ผ่าน'],
+  ['42', 'ฟังก์ชัน / RPC'],
+  ['134', 'เคสทดสอบที่ผ่าน'],
 ]
 
 export default function Landing() {
@@ -47,6 +49,11 @@ export default function Landing() {
             ระบบบริหารร้านชาบูบุฟเฟต์<br />พร้อมสั่งอาหารผ่าน QR
           </h1>
           <span className="entry__pill">ครบทั้งลูกค้า · พนักงาน · ครัว · ผู้จัดการ</span>
+          <div style={{ marginTop: 18 }}>
+            <Link className="btn btn--primary" to="/scan">
+              <Icon name="qr" size={17} /> สแกน QR ที่โต๊ะ
+            </Link>
+          </div>
         </div>
       </div>
 

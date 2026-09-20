@@ -20,6 +20,16 @@ export const TABLE_STATUS = {
 }
 
 // ข้อ ④ — paid กับ closed เป็นคนละสถานะโดยเจตนา
+/**
+ * ขนาดจาน — เก็บเป็น tag ในคอลัมน์ menu_items.tags ไม่ใช่คอลัมน์ใหม่
+ * ขนาดไม่กระทบราคา เพราะของในบุฟเฟต์คิดตามจำนวนคนไม่ใช่ตามจาน
+ * มันคือคำสั่งถึงครัว จึงเดินทางไปกับ note ของรายการที่สั่ง
+ */
+export const SIZE_TAG = 'sizes'
+export const SIZES = ['เล็ก', 'กลาง', 'ใหญ่']
+export const DEFAULT_SIZE = 'กลาง'
+export const hasSizes = (item) => (item?.tags ?? []).includes(SIZE_TAG)
+
 export const VISIT_STATUS = {
   open:             { label: 'กำลังใช้บริการ', tone: 'ok' },
   awaiting_payment: { label: 'รอชำระเงิน',     tone: 'warn' },
