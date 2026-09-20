@@ -138,8 +138,11 @@ console.log('\n── C-2 ปิดรอบพร้อมกันสองเ
   const [row] = (await admin.query(
     `select v.status vs, t.status ts from visits v join tables t on t.id=v.table_id where v.id=$1`,
     [visit.id])).rows
+  // audit_logs ชี้เป้าด้วย entity + entity_id (text) ไม่มีคอลัมน์ record_id
+  // และ close_visit บันทึก action เป็น 'visit.close' ไม่ใช่ชื่อฟังก์ชัน
   const [{ n: closes }] = (await admin.query(
-    `select count(*)::int n from audit_logs where action='close_visit' and record_id=$1`,
+    `select count(*)::int n from audit_logs
+      where action = 'visit.close' and entity = 'visits' and entity_id = $1::text`,
     [visit.id])).rows
 
   if (okCount === 1 && row.vs === 'closed' && row.ts === 'cleaning' && closes === 1)
