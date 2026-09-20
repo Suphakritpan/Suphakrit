@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useStore } from '../../context/StoreProvider'
 import { Toaster, ConnectionBadge, Empty, Loading } from '../shared/Bits'
 import Icon from '../ui/Icon'
@@ -25,6 +25,10 @@ export function CustomerLayout() {
             title="ยังไม่ได้เข้าโต๊ะ"
             hint="สแกน QR บนสลิปที่พนักงานให้ไว้ที่โต๊ะ เพื่อเริ่มสั่งอาหาร"
           />
+          {/* บอกให้สแกนแล้วต้องมีปุ่มให้กดด้วย ไม่งั้นคนอ่านจบแล้วไม่รู้จะทำอะไรต่อ */}
+          <Link className="btn btn--primary btn--block" to="/scan" style={{ marginTop: 18 }}>
+            <Icon name="qr" size={17} /> เปิดกล้องสแกน QR
+          </Link>
         </div>
         <Toaster />
       </div>
