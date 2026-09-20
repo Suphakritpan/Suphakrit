@@ -62,7 +62,7 @@ export default function AdminDashboard() {
         <Chip tone="neutral" icon="refresh">อัปเดตอัตโนมัติ</Chip>
       </TopBar>
 
-      <div className="body office">
+      <div className="body">
         <div className="stats">
           <Stat label="ยอดขายวันนี้" value={baht(d.salesTodaySatang)} hint={`${d.billsToday} บิล`} to="/admin/bills" />
           <Stat label="ลูกค้าวันนี้" value={`${d.guestsToday} คน`} hint={`เฉลี่ย ${baht(d.avgPerHeadSatang)} ต่อท่าน`} to="/admin/visits" />

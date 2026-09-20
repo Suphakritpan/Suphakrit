@@ -900,7 +900,7 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 
 /* ===========================================================================
-   สกิน "ออฟฟิศ" — ใช้เฉพาะหน้าที่ใส่คลาส .office เท่านั้น
+   สกิน "ออฟฟิศ" — ใช้กับทุกหน้าคอนโซลที่มีคลาส .body
    ---------------------------------------------------------------------------
    แนวคิด: เฟรมของแอปยังเป็นแถบมืดเหมือนแถบหัวหน้าต่างของ Word/Excel
    แต่พื้นที่เนื้อหากลายเป็น "แผ่นเอกสาร" สีขาว อ่านง่าย ความหนาแน่นสูง
@@ -909,11 +909,11 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
    ตัวเน้นใช้น้ำเงินแบบ Word (#185abd) จุดเดียว สีที่เหลือสื่อสถานะล้วน
    เขียวแบบ Excel = เสร็จ/ปกติ · ส้มอิฐแบบ PowerPoint = ต้องสนใจ
 
-   ทุกกฎในบล็อกนี้ขึ้นต้นด้วย .office จึงชนะกฎกลางด้วยความจำเพาะ
-   โดยไม่ต้องแก้ไฟล์กลางสักบรรทัด และไม่กระทบหน้าอื่นเลย
+   ทุกกฎในบล็อกนี้ขึ้นต้นด้วย .body จึงชนะกฎกลางด้วยความจำเพาะ
+   โดยไม่ต้องแก้ไฟล์กลางสักบรรทัด หน้าลูกค้า (.cx) และจอคิวหน้าร้านใช้คนละคลาส จึงไม่ถูกแตะ
    =========================================================================== */
 
-.office {
+.body {
   --o-sheet:  #ffffff;   /* แผ่นเอกสาร */
   --o-ground: #f3f2f1;   /* พื้นรองแผ่น */
   --o-line:   #e1dfdd;   /* เส้นคั่นบาง */
@@ -935,36 +935,36 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   min-height: 100%;
 }
 
-.office a { color: var(--o-accent); }
-.office a:hover { text-decoration: underline; }
-.office .muted { color: var(--o-ink-2); }
-.office .bold  { font-weight: 600; }
-.office .num   { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+.body a { color: var(--o-accent); }
+.body a:hover { text-decoration: underline; }
+.body .muted { color: var(--o-ink-2); }
+.body .bold  { font-weight: 600; }
+.body .num   { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
 
 /* หัวข้อกลุ่ม — เส้นบางใต้หัวเรื่องแบบสไตล์หัวข้อใน Word */
-.office .t-head {
+.body .t-head {
   font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--o-ink);
 }
-.office .t-label {
+.body .t-label {
   font-size: 11px; font-weight: 600; letter-spacing: .02em;
   text-transform: none; color: var(--o-ink-3);
 }
-.office .t-sm { font-size: 13px; }
-.office .t-xs { font-size: 12px; color: var(--o-ink-2); }
+.body .t-sm { font-size: 13px; }
+.body .t-xs { font-size: 12px; color: var(--o-ink-2); }
 
 /* แผงเนื้อหา — แบนราบ เส้นเดียว ไม่มีเงา */
-.office .card,
-.office .tablewrap {
+.body .card,
+.body .tablewrap {
   background: var(--o-sheet);
   border: 1px solid var(--o-line);
   border-radius: 2px;
   box-shadow: none;
 }
-.office .pad { padding: 14px 16px; }
+.body .pad { padding: 14px 16px; }
 
 /* ไทล์ตัวเลข — ป้ายเล็กด้านบน ตัวเลขหนาด้านล่าง ไม่มีแถบสีตกแต่ง */
-.office .stats { gap: 10px; }
-.office .stat {
+.body .stats { gap: 10px; }
+.body .stat {
   background: var(--o-sheet);
   border: 1px solid var(--o-line);
   border-radius: 2px;
@@ -972,9 +972,9 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   padding: 12px 14px;
   transition: background .12s, border-color .12s;
 }
-.office .stat::before { display: none; }
-.office a.stat:hover { background: #f8f8f7; border-color: var(--o-line-2); text-decoration: none; }
-.office .stat__v {
+.body .stat::before { display: none; }
+.body a.stat:hover { background: #f8f8f7; border-color: var(--o-line-2); text-decoration: none; }
+.body .stat__v {
   font-family: inherit;
   font-size: 24px; font-weight: 600; line-height: 1.25;
   color: var(--o-ink); letter-spacing: -.2px;
@@ -982,69 +982,173 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 /* ป้ายสถานะ — สี่เหลี่ยมมุมมนเล็ก พื้นอ่อน ตัวอักษรเข้ม อ่านได้ทุกอัน */
-.office .chip {
+.body .chip {
   border-radius: 2px; font-size: 12px; font-weight: 600;
   padding: 2px 8px; border: 1px solid transparent;
 }
-.office .chip--neutral { background: var(--o-ground); color: var(--o-ink-2); border-color: var(--o-line); }
-.office .chip--brand   { background: #fdf0ed;        color: var(--o-alert);  border-color: #f3cfc6; }
-.office .chip--ok      { background: #eff6f1;        color: var(--o-ok);     border-color: #cfe6d9; }
-.office .chip--warn    { background: #fdf6e7;        color: var(--o-warn);   border-color: #efdfb8; }
-.office .chip--info    { background: #eff4fb;        color: var(--o-accent); border-color: #cddcf0; }
+.body .chip--neutral { background: var(--o-ground); color: var(--o-ink-2); border-color: var(--o-line); }
+.body .chip--brand   { background: #fdf0ed;        color: var(--o-alert);  border-color: #f3cfc6; }
+.body .chip--ok      { background: #eff6f1;        color: var(--o-ok);     border-color: #cfe6d9; }
+.body .chip--warn    { background: #fdf6e7;        color: var(--o-warn);   border-color: #efdfb8; }
+.body .chip--info    { background: #eff4fb;        color: var(--o-accent); border-color: #cddcf0; }
 
 /* แถบสัดส่วน — รางเทาอ่อน แท่งทึบ ไม่มีเรืองแสง */
-.office .meter {
+.body .meter {
   height: 6px; border-radius: 2px;
   background: var(--o-ground); border: 1px solid var(--o-line);
 }
-.office .meter > i { background: var(--o-accent); box-shadow: none; }
+.body .meter > i { background: var(--o-accent); box-shadow: none; }
 
 /* กราฟแท่ง — ทึบ ไม่ไล่สี พีคเน้นด้วยน้ำเงินเข้มไม่ใช่แสง */
-.office .bars .b {
+.body .bars .b {
   background: #c7d9f0; border-radius: 2px 2px 0 0; box-shadow: none;
 }
-.office .bars > div:hover .b { background: #9dbde6; box-shadow: none; }
-.office .bars .b--peak { background: var(--o-accent); box-shadow: none; }
-.office .bars .x { color: var(--o-ink-3); }
+.body .bars > div:hover .b { background: #9dbde6; box-shadow: none; }
+.body .bars .b--peak { background: var(--o-accent); box-shadow: none; }
+.body .bars .x { color: var(--o-ink-3); }
 
 /* อันดับ — ตัวเลขลำดับเป็นกล่องเทาเรียบ ไม่ใช่เหรียญ */
-.office .rank { padding: 7px 0; border-bottom: 1px solid var(--o-line); }
-.office .rank:last-child { border-bottom: 0; }
-.office .rank__n {
+.body .rank { padding: 7px 0; border-bottom: 1px solid var(--o-line); }
+.body .rank:last-child { border-bottom: 0; }
+.body .rank__n {
   background: var(--o-ground); color: var(--o-ink-2);
   border: 1px solid var(--o-line); border-radius: 2px;
   width: 22px; height: 22px; font-size: 11px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
   box-shadow: none;
 }
-.office .rank:first-child .rank__n { background: #eff4fb; color: var(--o-accent); border-color: #cddcf0; }
+.body .rank:first-child .rank__n { background: #eff4fb; color: var(--o-accent); border-color: #cddcf0; }
 
 /* ตาราง — เส้นตารางแบบสเปรดชีต หัวตารางพื้นเทาอ่อน ตัวเลขชิดขวา */
-.office .tablewrap { border-radius: 2px; }
-.office .data { font-size: 13px; border-collapse: collapse; }
-.office .data th {
+.body .tablewrap { border-radius: 2px; }
+.body .data { font-size: 13px; border-collapse: collapse; }
+.body .data th {
   background: var(--o-ground); color: var(--o-ink-2);
   font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: none;
   padding: 7px 12px; border-bottom: 1px solid var(--o-line-2);
   position: sticky; top: 0;
 }
-.office .data td {
+.body .data td {
   padding: 7px 12px; border-bottom: 1px solid var(--o-line); color: var(--o-ink);
 }
-.office .data tbody tr:hover td { background: #f8f8f7; }
-.office .data tbody tr:last-child td { border-bottom: 0; }
-.office .data .num { text-align: right; font-variant-numeric: tabular-nums; }
+.body .data tbody tr:hover td { background: #f8f8f7; }
+.body .data tbody tr:last-child td { border-bottom: 0; }
+.body .data .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ช่องกรอกในสกินนี้ต้องเป็นของสว่าง ไม่ใช่ของมืดจากกฎกลาง */
-.office select,
-.office textarea,
-.office input:where(:not([type='checkbox'], [type='radio'], [type='submit'],
+.body select,
+.body textarea,
+.body input:where(:not([type='checkbox'], [type='radio'], [type='submit'],
                           [type='button'], [type='reset'], [type='file'],
                           [type='range'], [type='color'])) {
   background: var(--o-sheet); color: var(--o-ink);
   border: 1px solid var(--o-line-2); border-radius: 2px;
 }
-.office :is(select, input, textarea):focus-visible {
+.body :is(select, input, textarea):focus-visible {
   outline: 2px solid var(--o-accent); outline-offset: -1px; border-color: var(--o-accent);
 }
-.office a:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 2px; }
+.body a:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 2px; }
+
+
+/* ── ปุ่ม ─────────────────────────────────────────────────────────────────
+   แบนราบ มุม 2px เส้นเดียว ไม่มีไล่เฉดและไม่ขยับตอนกด
+   ปุ่มหลักทึบสีน้ำเงิน ปุ่มรองขาวมีเส้น ปุ่มเงียบโปร่งใส — ลำดับเดียวกับ Office */
+.body .btn {
+  border-radius: 2px; font-weight: 600; font-size: 13px;
+  border: 1px solid transparent; box-shadow: none; height: 32px; padding: 0 14px;
+  transition: background .12s, border-color .12s;
+}
+.body .btn:active:not(:disabled) { transform: none; }
+.body .btn--sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.body .btn--lg { height: 38px; padding: 0 20px; font-size: 14px; border-radius: 2px; }
+.body .btn--icon { width: 32px; padding: 0; }
+.body .btn--icon.btn--sm { width: 28px; }
+
+.body .btn--primary {
+  background: var(--o-accent); color: #fff; border-color: var(--o-accent);
+}
+.body .btn--primary:hover:not(:disabled) { background: #10459a; border-color: #10459a; }
+
+.body .btn--default {
+  background: var(--o-sheet); color: var(--o-ink); border-color: var(--o-line-2);
+}
+.body .btn--default:hover:not(:disabled) { background: var(--o-ground); color: var(--o-ink); border-color: #a19f9d; }
+
+.body .btn--quiet { background: transparent; color: var(--o-ink-2); }
+.body .btn--quiet:hover:not(:disabled) { background: var(--o-ground); color: var(--o-ink); }
+
+.body .btn--gold { background: var(--o-warn); color: #fff; border-color: var(--o-warn); }
+.body .btn--gold:hover:not(:disabled) { background: #8a5a00; }
+.body .btn:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 1px; }
+
+/* ── ฟอร์ม ────────────────────────────────────────────────────────────────
+   ป้ายกำกับอยู่เหนือช่อง ตัวเล็กสีเทา ไม่ใช้ตัวพิมพ์ใหญ่ทั้งหมด
+   เพราะข้อความไทยไม่มีตัวพิมพ์ใหญ่ ระยะห่างตัวอักษรที่เพิ่มมาจึงแค่ทำให้อ่านช้าลง */
+.body .field { margin-bottom: 12px; }
+.body .field > span {
+  font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  color: var(--o-ink-2); margin-bottom: 4px;
+}
+.body .field input, .body .field select, .body .field textarea {
+  height: 32px; padding: 0 10px; border-radius: 2px;
+  background: var(--o-sheet); color: var(--o-ink); border: 1px solid var(--o-line-2);
+}
+.body .field textarea { height: auto; padding: 7px 10px; }
+.body .field input:focus, .body .field select:focus, .body .field textarea:focus {
+  outline: none; border-color: var(--o-accent); box-shadow: 0 0 0 1px var(--o-accent);
+}
+.body .field input::placeholder { color: var(--o-ink-3); }
+.body .field select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--o-ink-2) 50%),
+                    linear-gradient(135deg, var(--o-ink-2) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 14px, calc(100% - 10px) 14px;
+}
+
+/* ── กล่องข้อความแจ้ง ─────────────────────────────────────────────────────
+   แถบสีด้านซ้ายบอกระดับ พื้นอ่อน ตัวอักษรเข้ม อ่านได้โดยไม่ต้องเพ่ง */
+.body .note {
+  border-radius: 2px; border: 1px solid var(--o-line);
+  border-left: 3px solid var(--o-ink-3); background: var(--o-ground); color: var(--o-ink);
+}
+.body .note--warn { background: #fdf6e7; border-color: #efdfb8; border-left-color: var(--o-warn); color: #5c3d00; }
+.body .note--info { background: #eff4fb; border-color: #cddcf0; border-left-color: var(--o-accent); color: #10345f; }
+.body .note--ok   { background: #eff6f1; border-color: #cfe6d9; border-left-color: var(--o-ok);   color: #0a4f2a; }
+
+/* ── หน้าต่างซ้อน ─────────────────────────────────────────────────────────
+   หัวหน้าต่างเป็นแถบเทาอ่อนมีตัวอักษรเข้ม ไม่ใช่แถบสีแบรนด์ตัวหนังสือขาว
+   กฎเดิมใส่ !important ไว้ จึงต้องชนะด้วยความจำเพาะที่สูงกว่า */
+.body .sheet { background: rgba(0,0,0,.42); backdrop-filter: none; }
+.body .sheet__box {
+  background: var(--o-sheet); border: 1px solid var(--o-line-2);
+  border-radius: 2px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+.body .sheet__hd {
+  background: var(--o-ground); color: var(--o-ink);
+  border-bottom: 1px solid var(--o-line);
+}
+.body .sheet__hd .muted, .body .sheet__hd .t-xs { color: var(--o-ink-2) !important; }
+.body .sheet__hd .btn--quiet { color: var(--o-ink-2); }
+.body .sheet__hd .btn--quiet:hover { background: #e6e4e2; color: var(--o-ink); }
+.body .sheet__ft { background: var(--o-ground); border-top: 1px solid var(--o-line); }
+
+/* ── สถานะว่างเปล่า ───────────────────────────────────────────────────────
+   สำคัญกับคนที่ไม่ได้ใช้คอมพิวเตอร์เป็นอาชีพ — จอว่างต้องบอกว่าว่างเพราะอะไร
+   ไม่ใช่ปล่อยให้เดาว่าโหลดไม่ขึ้นหรือระบบพัง */
+.body .empty { color: var(--o-ink-2); padding: 40px 20px; }
+.body .empty__ico {
+  background: var(--o-ground); color: var(--o-ink-3);
+  border: 1px solid var(--o-line); border-radius: 2px;
+}
+
+/* ── หัวเรื่องในหน้า ──────────────────────────────────────────────────────── */
+.body .t-title { font-family: inherit; font-size: 15px; font-weight: 600; color: var(--o-ink); letter-spacing: 0; }
+
+/* ── ตั๋วครัว / การ์ดงาน ──────────────────────────────────────────────────── */
+.body .kds { gap: 10px; }
+.body .tkt, .body .tcard, .body .panel {
+  background: var(--o-sheet); border: 1px solid var(--o-line);
+  border-radius: 2px; box-shadow: none; color: var(--o-ink);
+}
+
+/* ── เส้นคั่นทั่วไป ───────────────────────────────────────────────────────── */
+.body hr, .body .sep { border: 0; border-top: 1px solid var(--o-line); }
