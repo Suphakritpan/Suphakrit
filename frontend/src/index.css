@@ -897,3 +897,154 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   table.data th { background: #eee !important; color: #000 !important; }
   .chip { border-color: #999 !important; color: #000 !important; background: #f2f2f2 !important; }
 }
+
+
+/* ===========================================================================
+   สกิน "ออฟฟิศ" — ใช้เฉพาะหน้าที่ใส่คลาส .office เท่านั้น
+   ---------------------------------------------------------------------------
+   แนวคิด: เฟรมของแอปยังเป็นแถบมืดเหมือนแถบหัวหน้าต่างของ Word/Excel
+   แต่พื้นที่เนื้อหากลายเป็น "แผ่นเอกสาร" สีขาว อ่านง่าย ความหนาแน่นสูง
+   ไม่มีเงาฟุ้ง ไม่มีแสงเรือง เส้นคั่นบางหนึ่งพิกเซล มุมมน 2px
+
+   ตัวเน้นใช้น้ำเงินแบบ Word (#185abd) จุดเดียว สีที่เหลือสื่อสถานะล้วน
+   เขียวแบบ Excel = เสร็จ/ปกติ · ส้มอิฐแบบ PowerPoint = ต้องสนใจ
+
+   ทุกกฎในบล็อกนี้ขึ้นต้นด้วย .office จึงชนะกฎกลางด้วยความจำเพาะ
+   โดยไม่ต้องแก้ไฟล์กลางสักบรรทัด และไม่กระทบหน้าอื่นเลย
+   =========================================================================== */
+
+.office {
+  --o-sheet:  #ffffff;   /* แผ่นเอกสาร */
+  --o-ground: #f3f2f1;   /* พื้นรองแผ่น */
+  --o-line:   #e1dfdd;   /* เส้นคั่นบาง */
+  --o-line-2: #c8c6c4;   /* เส้นเข้มขึ้น ใช้ใต้หัวตาราง */
+  --o-ink:    #201f1e;   /* ตัวอักษรหลัก */
+  --o-ink-2:  #605e5c;   /* ตัวอักษรรอง */
+  --o-ink-3:  #8a8886;   /* ป้ายกำกับ */
+  --o-accent: #185abd;   /* น้ำเงิน Word */
+  --o-ok:     #107c41;   /* เขียว Excel */
+  --o-warn:   #a26a00;
+  --o-alert:  #c43e1c;   /* ส้มอิฐ PowerPoint */
+
+  background: var(--o-ground);
+  color: var(--o-ink);
+  font-family: 'Segoe UI', 'Anuphan', -apple-system, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 18px 20px 40px;
+  min-height: 100%;
+}
+
+.office a { color: var(--o-accent); }
+.office a:hover { text-decoration: underline; }
+.office .muted { color: var(--o-ink-2); }
+.office .bold  { font-weight: 600; }
+.office .num   { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+
+/* หัวข้อกลุ่ม — เส้นบางใต้หัวเรื่องแบบสไตล์หัวข้อใน Word */
+.office .t-head {
+  font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--o-ink);
+}
+.office .t-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  text-transform: none; color: var(--o-ink-3);
+}
+.office .t-sm { font-size: 13px; }
+.office .t-xs { font-size: 12px; color: var(--o-ink-2); }
+
+/* แผงเนื้อหา — แบนราบ เส้นเดียว ไม่มีเงา */
+.office .card,
+.office .tablewrap {
+  background: var(--o-sheet);
+  border: 1px solid var(--o-line);
+  border-radius: 2px;
+  box-shadow: none;
+}
+.office .pad { padding: 14px 16px; }
+
+/* ไทล์ตัวเลข — ป้ายเล็กด้านบน ตัวเลขหนาด้านล่าง ไม่มีแถบสีตกแต่ง */
+.office .stats { gap: 10px; }
+.office .stat {
+  background: var(--o-sheet);
+  border: 1px solid var(--o-line);
+  border-radius: 2px;
+  box-shadow: none;
+  padding: 12px 14px;
+  transition: background .12s, border-color .12s;
+}
+.office .stat::before { display: none; }
+.office a.stat:hover { background: #f8f8f7; border-color: var(--o-line-2); text-decoration: none; }
+.office .stat__v {
+  font-family: inherit;
+  font-size: 24px; font-weight: 600; line-height: 1.25;
+  color: var(--o-ink); letter-spacing: -.2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ป้ายสถานะ — สี่เหลี่ยมมุมมนเล็ก พื้นอ่อน ตัวอักษรเข้ม อ่านได้ทุกอัน */
+.office .chip {
+  border-radius: 2px; font-size: 12px; font-weight: 600;
+  padding: 2px 8px; border: 1px solid transparent;
+}
+.office .chip--neutral { background: var(--o-ground); color: var(--o-ink-2); border-color: var(--o-line); }
+.office .chip--brand   { background: #fdf0ed;        color: var(--o-alert);  border-color: #f3cfc6; }
+.office .chip--ok      { background: #eff6f1;        color: var(--o-ok);     border-color: #cfe6d9; }
+.office .chip--warn    { background: #fdf6e7;        color: var(--o-warn);   border-color: #efdfb8; }
+.office .chip--info    { background: #eff4fb;        color: var(--o-accent); border-color: #cddcf0; }
+
+/* แถบสัดส่วน — รางเทาอ่อน แท่งทึบ ไม่มีเรืองแสง */
+.office .meter {
+  height: 6px; border-radius: 2px;
+  background: var(--o-ground); border: 1px solid var(--o-line);
+}
+.office .meter > i { background: var(--o-accent); box-shadow: none; }
+
+/* กราฟแท่ง — ทึบ ไม่ไล่สี พีคเน้นด้วยน้ำเงินเข้มไม่ใช่แสง */
+.office .bars .b {
+  background: #c7d9f0; border-radius: 2px 2px 0 0; box-shadow: none;
+}
+.office .bars > div:hover .b { background: #9dbde6; box-shadow: none; }
+.office .bars .b--peak { background: var(--o-accent); box-shadow: none; }
+.office .bars .x { color: var(--o-ink-3); }
+
+/* อันดับ — ตัวเลขลำดับเป็นกล่องเทาเรียบ ไม่ใช่เหรียญ */
+.office .rank { padding: 7px 0; border-bottom: 1px solid var(--o-line); }
+.office .rank:last-child { border-bottom: 0; }
+.office .rank__n {
+  background: var(--o-ground); color: var(--o-ink-2);
+  border: 1px solid var(--o-line); border-radius: 2px;
+  width: 22px; height: 22px; font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: none;
+}
+.office .rank:first-child .rank__n { background: #eff4fb; color: var(--o-accent); border-color: #cddcf0; }
+
+/* ตาราง — เส้นตารางแบบสเปรดชีต หัวตารางพื้นเทาอ่อน ตัวเลขชิดขวา */
+.office .tablewrap { border-radius: 2px; }
+.office .data { font-size: 13px; border-collapse: collapse; }
+.office .data th {
+  background: var(--o-ground); color: var(--o-ink-2);
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: none;
+  padding: 7px 12px; border-bottom: 1px solid var(--o-line-2);
+  position: sticky; top: 0;
+}
+.office .data td {
+  padding: 7px 12px; border-bottom: 1px solid var(--o-line); color: var(--o-ink);
+}
+.office .data tbody tr:hover td { background: #f8f8f7; }
+.office .data tbody tr:last-child td { border-bottom: 0; }
+.office .data .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ช่องกรอกในสกินนี้ต้องเป็นของสว่าง ไม่ใช่ของมืดจากกฎกลาง */
+.office select,
+.office textarea,
+.office input:where(:not([type='checkbox'], [type='radio'], [type='submit'],
+                          [type='button'], [type='reset'], [type='file'],
+                          [type='range'], [type='color'])) {
+  background: var(--o-sheet); color: var(--o-ink);
+  border: 1px solid var(--o-line-2); border-radius: 2px;
+}
+.office :is(select, input, textarea):focus-visible {
+  outline: 2px solid var(--o-accent); outline-offset: -1px; border-color: var(--o-accent);
+}
+.office a:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 2px; }
