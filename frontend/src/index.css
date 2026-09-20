@@ -1264,3 +1264,82 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   .sizes button { transition: none; }
 }
+
+
+/* ── แท็บกรอง (สถานีครัว / หมวด) ในคอนโซล ────────────────────────────────
+   สี่เหลี่ยมมุม 2px ไม่ใช่เม็ดยา อันที่เลือกทึบสีน้ำเงิน
+   เลือกพื้นทึบเพราะอ่านได้จากระยะไกลกว่าการเปลี่ยนแค่สีตัวอักษร
+   ซึ่งสำคัญกับจอครัวที่คนมองจากอีกฝั่งเคาน์เตอร์ */
+.body .tab {
+  height: 30px; padding: 0 12px; border-radius: 2px;
+  font-size: 12.5px; font-weight: 600;
+  background: var(--o-sheet); color: var(--o-ink-2);
+  border: 1px solid var(--o-line-2); transition: background .12s, color .12s;
+}
+.body .tab:hover { background: var(--o-ground); color: var(--o-ink); border-color: #a19f9d; }
+.body .tab--on {
+  background: var(--o-accent); color: #fff; border-color: var(--o-accent); box-shadow: none;
+}
+.body .tab:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 1px; }
+
+/* ── ใบสั่งบนจอครัว ───────────────────────────────────────────────────────
+   หัวใบเป็นแถบเทาอ่อนตัวหนังสือเข้ม เหมือนหัวตารางในสเปรดชีต
+   ใบที่รอนานเปลี่ยนเป็นแถบสีเตือน และยังคงกระพริบเมื่อสายจริง
+   เพราะจอครัวต้องสะดุดตาจากอีกฝั่งห้อง ไม่ใช่ต้องเดินมาอ่าน */
+.body .tkt {
+  background: var(--o-sheet); border: 1px solid var(--o-line);
+  border-radius: 2px; box-shadow: none;
+}
+.body .tkt__hd {
+  background: var(--o-ground); color: var(--o-ink);
+  border-bottom: 1px solid var(--o-line-2);
+  padding: 9px 12px;
+}
+.body .tkt__hd .muted, .body .tkt__hd .t-xs { color: var(--o-ink-2); }
+
+.body .tkt__hd--aging {
+  background: #fdf6e7; color: #5c3d00;
+  border-bottom-color: #e0bf6a; box-shadow: inset 3px 0 0 var(--o-warn);
+}
+.body .tkt__hd--aging .muted, .body .tkt__hd--aging .t-xs { color: #7a5400; }
+
+.body .tkt__hd--late {
+  background: #fdecea; color: #8a1f10;
+  border-bottom-color: #e8a99d; box-shadow: inset 3px 0 0 var(--o-alert);
+  animation: officeLate 1.9s ease-in-out infinite;
+}
+.body .tkt__hd--late .muted, .body .tkt__hd--late .t-xs { color: #a3382a; }
+@keyframes officeLate {
+  0%, 100% { background: #fdecea; }
+  50%      { background: #f8d7d1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .body .tkt__hd--late { animation: none; border-bottom-width: 2px; }
+}
+
+.body .tkt__row { padding: 9px 12px; }
+.body .tkt__row + .tkt__row { border-top: 1px solid var(--o-line); }
+.body .tkt__q {
+  min-width: 28px; height: 28px; border-radius: 2px;
+  background: #eff4fb; color: var(--o-accent); border: 1px solid #cddcf0;
+  font-family: inherit; font-size: 14px; font-weight: 700;
+}
+.body .tkt__ft {
+  background: var(--o-ground); border-top: 1px solid var(--o-line); padding: 10px 12px;
+}
+
+/* ── การ์ดโต๊ะในผังโต๊ะ ───────────────────────────────────────────────────
+   สถานะเดิมสื่อด้วยแสงเรืองที่ขอบซ้าย ซึ่งหายไปบนพื้นสว่าง
+   เปลี่ยนเป็นแถบสีทึบกว้าง 3px อ่านออกทั้งบนจอสว่างและจอมืด */
+.body .tcard {
+  background: var(--o-sheet); border: 1px solid var(--o-line);
+  border-radius: 2px; box-shadow: none; color: var(--o-ink);
+}
+.body .tcard:hover { transform: none; box-shadow: none; border-color: var(--o-line-2); }
+.body .tcard::before { box-shadow: none !important; width: 3px; }
+.body .tcard--available::before { background: var(--o-ok) !important; }
+.body .tcard--occupied::before  { background: var(--o-accent) !important; }
+.body .tcard--cleaning::before  { background: var(--o-warn) !important; }
+.body .tcard--reserved::before  { background: var(--o-ink-3) !important; }
+.body .tcard--occupied, .body .tcard--cleaning { background: var(--o-sheet); }
+.body .tcard__no { font-family: inherit; font-size: 22px; font-weight: 600; letter-spacing: 0; }
