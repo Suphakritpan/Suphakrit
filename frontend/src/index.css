@@ -122,19 +122,27 @@ body::before {
 
 button, input, select, textarea { font: inherit; color: inherit; }
 
-/* select ที่ไม่ได้อยู่ใน .field ไม่เคยถูกตั้งพื้นหลัง จึงได้สีขาวจากเบราว์เซอร์
-   มาชนกับ color: inherit ซึ่งเป็นสีอ่อนของธีมมืด ผลคือขาวบนขาว อ่านไม่ออก
-   และมองไม่ออกด้วยซ้ำว่ามีตัวเลือกให้กด — .field select มีสไตล์เต็มของตัวเองอยู่แล้ว
-   และเฉพาะเจาะจงกว่า จึงไม่ถูกกฎนี้ทับ */
-select {
+/* ช่องกรอกที่ไม่ได้อยู่ใน .field ไม่เคยถูกตั้งพื้นหลัง จึงได้สีขาวจากเบราว์เซอร์
+   มาชนกับ color: inherit ซึ่งเป็นสีอ่อนของธีมมืด ผลคือขาวบนขาว อ่านค่าไม่ออก
+   และมองไม่ออกด้วยซ้ำว่ามีช่องให้กรอกหรือตัวเลือกให้กด
+
+   :where() ไม่เพิ่มค่าความจำเพาะ กฎนี้จึงยังเท่ากับตัวเลือกระดับ element
+   คลาสที่จัดสไตล์ช่องกรอกอยู่แล้ว เช่น .field input ยังชนะเหมือนเดิมทุกที่ */
+select,
+textarea,
+input:where(:not([type='checkbox'], [type='radio'], [type='submit'],
+                 [type='button'], [type='reset'], [type='file'],
+                 [type='range'], [type='color'])) {
   background: var(--n900);
   border: 1px solid var(--line-hi);
   border-radius: var(--r-sm);
   height: 34px;
   padding: 0 10px;
-  cursor: pointer;
 }
-select:disabled { opacity: .55; cursor: default; }
+select { cursor: pointer; }
+textarea { height: auto; padding: 8px 10px; }
+select:disabled, input:disabled, textarea:disabled { opacity: .55; cursor: default; }
+input::placeholder, textarea::placeholder { color: var(--n500); }
 option { background: var(--n900); color: var(--n50); }
 button { cursor: pointer; border: none; background: none; padding: 0; }
 a { color: inherit; text-decoration: none; }
