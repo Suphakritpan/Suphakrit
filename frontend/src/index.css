@@ -926,6 +926,55 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   --o-warn:   #a26a00;
   --o-alert:  #c43e1c;   /* ส้มอิฐ PowerPoint */
 
+  /* ── กลับด้านสเกลสีของธีมมืดภายในหน้าคอนโซล ───────────────────────────
+     นี่คือส่วนที่ทำให้สกินครอบได้จริงทั้งหน้า ไม่ใช่เฉพาะคลาสที่ไล่แก้ทีละตัว
+
+     ทั้งไฟล์มีคลาสหลายสิบตัวที่ตั้งพื้นหลังหรือสีตัวอักษรของตัวเองด้วยตัวแปร
+     ชุดนี้ เช่น .pay .tkt .sheet .step .tab การไล่เขียนทับทีละคลาสจะพลาดเสมอ
+     เพราะพลาดตัวไหนก็กลายเป็นกล่องมืดบนพื้นขาว อ่านไม่ออกทันที
+     และคลาสที่เพิ่มทีหลังจะพลาดโดยอัตโนมัติ
+
+     ประกาศค่าใหม่ให้ตัวแปรที่นี่แทน ทุกกฎที่อ้างถึงมันจึงกลายเป็นของสว่างพร้อมกัน
+     โดยไม่ต้องแตะกฎเดิมสักบรรทัด และหน้าลูกค้าซึ่งอยู่นอก .body ไม่ได้รับผลใด ๆ
+
+     หลักการจับคู่: n0–n200 เคยเป็นตัวอักษรบนพื้นมืด จึงกลายเป็นหมึกเข้ม
+     n300–n500 เคยเป็นตัวอักษรรอง จึงเป็นเทากลาง ส่วน n600 ขึ้นไปกับ s1–s3
+     เคยเป็นพื้นผิว จึงกลายเป็นพื้นสว่าง */
+  --n0:   #000000;
+  --n50:  #201f1e;
+  --n100: #201f1e;
+  --n200: #323130;
+  --n300: #605e5c;
+  --n400: #797775;
+  --n500: #8a8886;
+  --n600: #c8c6c4;
+  --n700: #201f1e;   /* ใช้เป็นสีตัวอักษรใน .empty ไม่ใช่พื้นผิว */
+  --n800: #ffffff;
+  --n900: #f3f2f1;
+
+  --s1: #ffffff;
+  --s2: #faf9f8;
+  --s3: #f3f2f1;
+  --line:    #e1dfdd;
+  --line-hi: #c8c6c4;
+
+  --brand:      #185abd;
+  --brand-soft: #eff4fb;
+  --danger:     #c43e1c;
+  --gold:       #a26a00;
+  --gold-soft:  #fdf6e7;
+  --gold-line:  #efdfb8;
+
+  --ok:   #107c41;  --ok-soft:   #eff6f1;  --ok-line:   #cfe6d9;
+  --warn: #a26a00;  --warn-soft: #fdf6e7;  --warn-line: #efdfb8;
+  --info: #185abd;  --info-soft: #eff4fb;  --info-line: #cddcf0;
+
+  /* เงาฟุ้งและแสงเรืองไม่มีที่ทางบนกระดาษ */
+  --sh-1: none;
+  --sh-2: 0 2px 6px rgba(0,0,0,.08);
+  --sh-3: 0 8px 24px rgba(0,0,0,.14);
+  --glow: 0 0 0 1px #185abd;
+
   background: var(--o-ground);
   color: var(--o-ink);
   font-family: 'Segoe UI', 'Anuphan', -apple-system, system-ui, sans-serif;
@@ -1343,3 +1392,33 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 .body .tcard--reserved::before  { background: var(--o-ink-3) !important; }
 .body .tcard--occupied, .body .tcard--cleaning { background: var(--o-sheet); }
 .body .tcard__no { font-family: inherit; font-size: 22px; font-weight: 600; letter-spacing: 0; }
+
+
+/* ── ค่าที่เขียนเป็นเลขฐานสิบหกตรง ๆ ไม่ได้ผ่านตัวแปร จึงต้องเขียนทับเอง ──── */
+.body .pay {
+  background: var(--o-sheet); border: 1px solid var(--o-line-2);
+  border-radius: 2px; box-shadow: none;
+}
+.body .pay:hover { background: var(--o-ground); border-color: #a19f9d; }
+.body .pay--on {
+  background: #eff4fb; border-color: var(--o-accent);
+  box-shadow: inset 3px 0 0 var(--o-accent);
+}
+.body .pay__ico {
+  background: var(--o-ground); color: var(--o-ink-2);
+  border: 1px solid var(--o-line); border-radius: 2px; box-shadow: none;
+}
+.body .pay--on .pay__ico { background: var(--o-accent); color: #fff; border-color: var(--o-accent); }
+.body .pay__check { color: var(--o-accent); }
+
+.body .step { background: var(--o-sheet); border-color: var(--o-line-2); border-radius: 2px; }
+.body .step button { color: var(--o-accent); }
+.body .step button:hover:not(:disabled) { background: var(--o-ground); }
+.body .step--on { border-color: var(--o-accent); }
+
+.body .tcard--occupied, .body .tcard--cleaning { background: var(--o-sheet) !important; }
+.body .tkt__hd { background: var(--o-ground) !important; }
+.body .chip--brand { background: #fdf0ed; color: var(--o-alert); border-color: #f3cfc6; }
+
+/* ใบเสร็จยังเป็นกระดาษของมันเอง ไม่ต้องแตะ — แต่เส้นประต้องไม่จางหายบนพื้นขาว */
+.body .slip__r { border-top-color: #b9a894; }
